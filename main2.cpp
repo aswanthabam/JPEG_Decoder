@@ -257,6 +257,8 @@ private:
   void read_quantization_table()
   {
     cout << "\n - GOT : Quantization Table \n";
+    char* buf = read_bytes(2);
+    cout<<"Buffer: "<<(int)buf[0]<<" "<<(int)buf[1]<<endl;
     int length = hex_to_int(read_bytes(2), 2);
     cout << "\tLength : " << length << endl;
     seek(length - 2);
@@ -367,19 +369,19 @@ public:
         read_application_headers();
       else if (compare(marker, (char *)"\xff\xdb", 2))
         read_quantization_table();
-      else if (compare(marker, (char *)"\xff\xc0", 2))
-        read_start_of_frame();
-      else if (compare(marker, (char *)"\xff\xc4", 2))
-        read_huffman_table();
-      else if (compare(marker, (char *)"\xff\xda", 2))
-      {
-        read_start_of_scan();
-        return;
-      }
-      else
-      {
-        cout << "Something idk" << endl;
-      }
+      // else if (compare(marker, (char *)"\xff\xc0", 2))
+      //   read_start_of_frame();
+      // else if (compare(marker, (char *)"\xff\xc4", 2))
+      //   read_huffman_table();
+      // else if (compare(marker, (char *)"\xff\xda", 2))
+      // {
+      //   read_start_of_scan();
+      //   return;
+      // }
+      // else
+      // {
+      //   cout << "Something idk" << endl;
+      // }
     } while (!compare(marker, (char *)"\xff\xd9", 2));
   }
 };
@@ -391,10 +393,10 @@ int main(int argc, char *argv[])
     return 0;
   }
   char *img = argv[1];
-  /*JPEG obj(img);
+  JPEG obj(img);
   if (obj.STATUS)
-    obj.decode();*/
+    obj.decode();
   
-  HuffmanTable table(new int[16]{0,1,5,1,1,1,1,1,1,0,0,0,0,0,0,0},new char[12]{'a','b','c','d','e','f','g','h','i','j','k','l'});
-  table.decode();
+  // HuffmanTable table(new int[16]{0,1,5,1,1,1,1,1,1,0,0,0,0,0,0,0},new char[12]{'a','b','c','d','e','f','g','h','i','j','k','l'});
+  // table.decode();
 }

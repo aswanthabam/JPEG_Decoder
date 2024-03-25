@@ -1,6 +1,17 @@
 {
   "files.associations": {
+    "*.embeddedhtml": "html",
     "ostream": "cpp",
-    "iostream": "cpp"
+    "iostream": "cpp",
+    "atomic": "cpp",
+    "compare": "cpp",
+    "iterator": "cpp",
+    "locale": "cpp",
+    "memory": "cpp",
+    "tuple": "cpp",
+    "xlocale": "cpp",
+    "xstring": "cpp",
+    "xutility": "cpp",
+    "istream": "cpp"
   }
 }
