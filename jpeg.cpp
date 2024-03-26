@@ -3,7 +3,9 @@
 #include <string>
 #include<cstring>
 #include <math.h>
+#include<map>
 #include "huffman.h"
+#include "idct.h"
 
 using namespace std;
 
@@ -41,8 +43,7 @@ class JPEG
   int image_width;
   int image_height;
   int quantMapping[4];
-  HuffmanTable *huffman_table[4];
-  int _huffman_table_count = 0;
+  map<int, HuffmanTable*> huffman_table;
 
   string byteToBits(const char bytes)
   {
@@ -92,7 +93,10 @@ class JPEG
     else
       return (unsigned int)num;
   }
-
+  void buildMatrix(BitStream st, int idx, int quant[8][8], int olddccoeff) {
+    IDCT idct;
+    
+  }
 public:
   JPEG(string filename)
   {
@@ -151,17 +155,14 @@ public:
         cout << "\nStart of Frame\n\n";
         char *length = file->read(2);
         int len = hex_to_int(length, 2);
-        cout << "# Length : " << len << endl;
         unsigned int precision =  hex_to_int(file->read(1), 1); // Precision
-        cout << "# Precision : " << precision << endl;
         char *height_b = file->read(2);
         char *width_b = file->read(2);
-        unsigned int width = hex_to_int(width_b, 2);
-        unsigned int height = hex_to_int(height_b, 2);
-        cout << "# Image Size : " << width<< "x" << height << endl;
+        this->image_width = hex_to_int(width_b, 2);
+        this->image_height = hex_to_int(height_b, 2);
+        cout << "# Image Size : " << this->image_width<< "x" << this->image_height << endl;
         // unsigned int samples = hex_to_int(file->read(), 1);
         unsigned int components = hex_to_int(file->read(), 1);
-        cout << "# Components : " << components << endl;
         for (int i = 0; i < components; i++)
         {
           (int)file->read()[0]; // ID
@@ -175,12 +176,12 @@ public:
       }
       else if (marker[0] == '\xff' && marker[1] == '\xc4')
       {
-        cout << "HUffman Table ["<<this->_huffman_table_count<<"]\n";
         char *length = file->read(2);
         unsigned int len = hex_to_int(length, 2);
         // cout << "# Length : " << len << endl;
-        char *classDest = file->read();
-        // cout << "Class and destination : " << (*classDest >> 4) << " & " << (*classDest & 0x0F) << endl;
+        char header = file->read()[0];
+        cout << "HUffman Table ["<<(int) header<<"]\n";
+        // cout << "Class and destination : " << (int) header << ":" << (header & 0x0f) << ":" << ((header >> 4) & 0x0f) << endl;
         int arr[16];
         int n = 0;
         for (int i = 0; i < 16; i++)
@@ -209,8 +210,7 @@ public:
           // cout << endl;
         }
         table.GetHuffmanBits(arr, 16, elements);
-        this->huffman_table[this->_huffman_table_count] = &table;
-        this->_huffman_table_count++;
+        this->huffman_table[(int)header] = &table;
       }
       else if (marker[0] == '\xff' && marker[1] == '\xda') {
         cout << "\nStart of scan\n\n";
@@ -218,6 +218,17 @@ public:
         unsigned int len = hex_to_int(length, 2);
         cout << "# Length : " << len << endl;
         file->read(len > 2 ? len - 2 : 0);
+        BitStream st(file);
+        cout << hex_to_int(huffman_table[3]->getCode(&st),1) << endl;
+        cout << "NONE";
+        // for(int i = 0;i < 1000 * 346;i++) cout << st.getBit();
+        // for (int i = 0;i < 5; i++ ) {
+        //   for (int j = 0; j < 5; i++)
+        //   {
+            
+        //   }
+        //   cout << endl;
+        // }
       }
       else if (marker[0] == '\xff' && marker[1] == '\x00')
       {

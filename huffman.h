@@ -10,26 +10,35 @@ using namespace std;
 class BitStream
 {
     char st;
-    int st_c = 7;
-
+    int st_c = -1;
+    FileUtils *file;
 public:
     BitStream(char st)
     {
         this->st = st;
     }
     BitStream(FileUtils *file) {
-        file->read();
+        this->file = file;
     }
     int getBit()
     {
         if (st_c < 0)
         {
-            return -1;
+            st = *file->read();
+            st_c = 7;
         }
         bool bit = (st >> st_c) & 1;
+        st_c--;
         return bit;
     }
 
+    int* getBitN(int n) {
+        int *bits = new int[n]();
+        for(int i = 0;i < n;i++) {
+            bits[i] = getBit();
+        }
+        return bits;
+    }
     string byteToBits()
     {
         string result;
@@ -83,6 +92,13 @@ public:
             return true;
         }
         return false;
+    }
+
+    Node* operator[](int index) {
+        if (index == 0) {
+            return this->left;
+        }
+        return this->right;
     }
 };
 
@@ -203,17 +219,22 @@ public:
     {
         cout << toList(this->root) << endl;
     }
-    void find(char *st)
+    
+    Node* find(BitStream *st)
     {
         Node *r = this->root;
-        while (r->value == nullptr)
+        while (r != nullptr)
         {
+            r[st->getBit()];
         }
+        return r;
     }
-    void getCode(char *st)
+    char* getCode(BitStream *st)
     {
         while (1)
         {
+            Node* res = find(st);
+            return res->value;
         }
     }
 
