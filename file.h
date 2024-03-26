@@ -4,14 +4,15 @@ using namespace std;
 
 class FileUtils {
   ifstream *file;
+  char *buffer = nullptr;
 public:
   FileUtils(string filename) {
     file = new ifstream(filename);
   }
   char* read(int size = 1) {
-    char *buffer = new char[size]();
-    file->read(buffer,size * sizeof(char));
-    return buffer;
+    this->buffer= new char[size]();
+    file->read(this->buffer,size * sizeof(char));
+    return this->buffer;
   }
   byte* readByte(int size = 1) {
     byte *buffer = new byte[size]();

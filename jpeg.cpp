@@ -1,16 +1,48 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include<cstring>
 #include <math.h>
-#include "file.h"
+#include "huffman.h"
 
 using namespace std;
+
+class QuantizationTable
+{
+  int table[8][8];
+  int header;
+
+public:
+  QuantizationTable(int header, char *raw)
+  {
+    for (int i = 0; i < 8; i++)
+    {
+      for (int j = 0; j < 8; j++)
+        this->table[i][j] = (int) raw[i * 8 + j];
+    }
+    this->header = header;
+  }
+
+  void display() {
+    for (int i = 0;i < 8; i++) {
+      cout << "\t";
+      for (int j = 0; j < 8; j++) {
+        cout << table[i][j] << " ";
+      }
+      cout << endl;
+    }
+  }
+};
 
 class JPEG
 {
   FileUtils *file;
-  char *first_quantization_table;
-  char *second_quantization_table;
+  QuantizationTable *quantization_table[2];
+  int image_width;
+  int image_height;
+  int quantMapping[4];
+  HuffmanTable *huffman_table[4];
+  int _huffman_table_count = 0;
 
   string byteToBits(const char bytes)
   {
@@ -39,7 +71,7 @@ class JPEG
       delete[] u;
       u = new char[2];
       sprintf(u, "%X", hex_to_int(v[i]));
-      if (sizeof(u) / sizeof(char) == 1)
+      if (strlen(u) == 1)
       {
         u[1] = u[0];
         u[0] = '0';
@@ -90,12 +122,13 @@ public:
         int len = (length[0] << 8) + length[1];
         cout << "# Length : " << len << endl;
         char *headers = file->read(5);
-        cout << "# Application headers : " << headers << endl;
-        cout << "# Version: " << (int)file->read()[0] << "." << (int)file->read()[0] << endl;
-        cout << "# Units: " << (int)file->read()[0] << " dpi" << endl;
+        // cout << "# Application headers : " << headers << endl;
+        (int)file->read()[0];
+        (int)file->read()[0]; // Version x.x
+        (int)file->read()[0]; // Units dpi
         char *density = file->read(4);
-        cout << "# Density: " << (int)(density[0] << 8 + density[1]) << "x" << (int)(density[2] << 8 + density[3]) << endl;
-        cout << "# Thumbnail: " << (int)file->read()[0] << "x" << (int)file->read()[0] << endl;
+        (int)file->read()[0];
+        (int)file->read()[0]; // Thumbnail
         delete length;
         delete headers;
         delete density;
@@ -106,28 +139,9 @@ public:
         cout << "\nQuantization Tables\n\n";
         char *length = file->read(2);
         unsigned int len = hex_to_int(length, 2);
-        cout << "# Length : " << len << endl;
-        cout << "# Destination : " << (int)file->read()[0] << endl;
-        first_quantization_table = file->read(64);
-        cout << "# First Quantization Table : " << endl;
-        for (int i = 0; i < 8; i++)
-        {
-          cout << "\t ";
-          for (int j = 0; j < 8; j++)
-            cout << (int)first_quantization_table[i * 8 + j] << " ";
-          cout << endl;
-        }
-        cout << endl;
-        cout << "# Destination : " << (int)file->read()[0] << endl;
-        second_quantization_table = file->read(64);
-        cout << "# Second Quantization Table : " << endl;
-        for (int i = 0; i < 8; i++)
-        {
-          cout << "\t ";
-          for (int j = 0; j < 8; j++)
-            cout << (int)second_quantization_table[i * 8 + j] << " ";
-          cout << endl;
-        }
+        quantization_table[0] = new QuantizationTable((int)file->read()[0], file->read(64));
+        quantization_table[1] = new QuantizationTable((int)file->read()[0], file->read(64));
+        // quantization_table[1]->display();
         cout << endl;
         delete length;
         delete marker;
@@ -136,31 +150,37 @@ public:
       {
         cout << "\nStart of Frame\n\n";
         char *length = file->read(2);
-        unsigned int len = hex_to_int(length, 2);
+        int len = hex_to_int(length, 2);
         cout << "# Length : " << len << endl;
-        cout << "# Precision : " << hex_to_int(file->read(2), 2) << endl;
-        unsigned int lineNb = hex_to_int(file->read(2), 2);
-        unsigned int samples = hex_to_int(file->read(), 1);
-        cout << "# Line NB x Samples : " << lineNb << "x" << samples << " Pixels" << endl;
+        unsigned int precision =  hex_to_int(file->read(1), 1); // Precision
+        cout << "# Precision : " << precision << endl;
+        char *height_b = file->read(2);
+        char *width_b = file->read(2);
+        unsigned int width = hex_to_int(width_b, 2);
+        unsigned int height = hex_to_int(height_b, 2);
+        cout << "# Image Size : " << width<< "x" << height << endl;
+        // unsigned int samples = hex_to_int(file->read(), 1);
         unsigned int components = hex_to_int(file->read(), 1);
         cout << "# Components : " << components << endl;
         for (int i = 0; i < components; i++)
         {
-          cout << "\t# ID : " << (int)file->read()[0];
+          (int)file->read()[0]; // ID
           char *sampling = file->read();
-          cout << "\tSampling : " << (*sampling >> 4) << "x" << (*sampling & 0x0F);
-          cout << "\tQuantization Table : " << hex_to_int(file->read(), 1) << endl;
-          cout << endl;
+          // cout << "\tSampling : " << (*sampling >> 4) << "x" << (*sampling & 0x0F);
+          int table = hex_to_int(file->read(), 1); // Quantization Table
+          this->quantMapping[i] = table;
         }
+        delete length;
+        delete marker;
       }
       else if (marker[0] == '\xff' && marker[1] == '\xc4')
       {
-        cout << "HUffman Table\n\n";
+        cout << "HUffman Table ["<<this->_huffman_table_count<<"]\n";
         char *length = file->read(2);
         unsigned int len = hex_to_int(length, 2);
-        cout << "# Length : " << len << endl;
+        // cout << "# Length : " << len << endl;
         char *classDest = file->read();
-        cout << "Class and destination : " << (*classDest >> 4) << " & " << (*classDest & 0x0F) << endl;
+        // cout << "Class and destination : " << (*classDest >> 4) << " & " << (*classDest & 0x0F) << endl;
         int arr[16];
         int n = 0;
         for (int i = 0; i < 16; i++)
@@ -169,18 +189,41 @@ public:
           arr[i] = num;
           n += num;
         }
-        cout << "# Total number of codes : " << n << endl;
+        HuffmanTable table;
+        // cout << "# Total number of codes : " << n << endl;
+        char **elements = (char **)malloc(sizeof(char *) * n);
+        int k = 0;
         for (int i = 0; i < 16; i++)
         {
           if (arr[i] == 0)
           {
             continue;
           }
-          cout << "Code of length " << i + 1 << " : ";
+          // cout << "Code of length " << i + 1 << " : ";
           for (int j = 0; j < arr[i]; j++)
-            cout << byteToBits(*(file->read())) << " ";
-          cout << endl;
+          {
+            elements[k] = file->read();
+            // cout << hex_to_int(elements[k], 1) << " ";
+            k++;
+          }
+          // cout << endl;
         }
+        table.GetHuffmanBits(arr, 16, elements);
+        this->huffman_table[this->_huffman_table_count] = &table;
+        this->_huffman_table_count++;
+      }
+      else if (marker[0] == '\xff' && marker[1] == '\xda') {
+        cout << "\nStart of scan\n\n";
+        char *length = file->read(2);
+        unsigned int len = hex_to_int(length, 2);
+        cout << "# Length : " << len << endl;
+        file->read(len > 2 ? len - 2 : 0);
+      }
+      else if (marker[0] == '\xff' && marker[1] == '\x00')
+      {
+        cout << "FF00\n\n";
+        delete marker;
+        break;
       }
       else
       {

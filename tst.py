@@ -1,25 +1,44 @@
-class Node:
-    def __init__(self, symbol=None, length=None):
-        self.symbol = symbol
-        self.length = length
-        self.left = None
-        self.right = None
+class HuffmanTable:
+    def __init__(self):
+        self.root=[]
+        self.elements = []
+    
+    def BitsFromLengths(self, root, element, pos):
+        if isinstance(root,list):
+            if pos==0:
+                if len(root)<2:
+                    root.append(element)
+                    return True                
+                return False
+            for i in [0,1]:
+                if len(root) == i:
+                    root.append([])
+                if self.BitsFromLengths(root[i], element, pos-1) == True:
+                    return True
+        return False
+    
+    def GetHuffmanBits(self,  lengths, elements):
+        self.elements = elements
+        ii = 0
+        for i in range(len(lengths)):
+            for j in range(lengths[i]):
+                self.BitsFromLengths(self.root, elements[ii], i)
+                ii+=1
 
-def build_huffman_tree(symbol_lengths):
-    sorted_symbols = sorted(symbol_lengths.items(), key=lambda x: (x[1], x[0]))
-    nodes = [Node(symbol=symbol, length=length) for symbol, length in sorted_symbols]
+    def Find(self,st):
+        r = self.root
+        while isinstance(r, list):
+            r=r[st.GetBit()]
+        return  r 
 
-    while len(nodes) > 1:
-        left = nodes.pop(0)
-        right = nodes.pop(0)
-        parent = Node(length=min(left.length, right.length))
-        parent.left = left
-        parent.right = right
-        nodes.append(parent)
-        nodes.sort(key=lambda x: (x.length, x.symbol))
+    def GetCode(self, st):
+        while(True):
+            res = self.Find(st)
+            if res == 0:
+                return 0
+            elif ( res != -1):
+                return res
 
-    return nodes[0]
-
-# Example usage
-symbol_lengths = {'a': 2, 'b': 3, 'c': 3, 'd': 4}
-huffman_tree = build_huffman_tree(symbol_lengths)
+HuffmanTable1 = HuffmanTable()
+HuffmanTable1.GetHuffmanBits([0, 2, 2, 3, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],[5, 6, 3, 4, 2, 7, 8, 1, 0, 9])
+print(HuffmanTable1.root)

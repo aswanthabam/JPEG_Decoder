@@ -12,6 +12,9 @@
     "xlocale": "cpp",
     "xstring": "cpp",
     "xutility": "cpp",
-    "istream": "cpp"
+    "istream": "cpp",
+    "vector": "cpp",
+    "cstddef": "cpp",
+    "string": "cpp"
   }
 }

@@ -365,12 +365,12 @@ public:
     do
     {
       marker = read_bytes(2);
-      if (compare(marker, (char *)"\xff\xe0", 2))
-        read_application_headers();
-      else if (compare(marker, (char *)"\xff\xdb", 2))
-        read_quantization_table();
-      // else if (compare(marker, (char *)"\xff\xc0", 2))
-      //   read_start_of_frame();
+      // if (compare(marker, (char *)"\xff\xe0", 2))
+      //   read_application_headers();
+      // else if (compare(marker, (char *)"\xff\xdb", 2))
+      //   read_quantization_table();
+      if (compare(marker, (char *)"\xff\xc0", 2))
+        read_start_of_frame();
       // else if (compare(marker, (char *)"\xff\xc4", 2))
       //   read_huffman_table();
       // else if (compare(marker, (char *)"\xff\xda", 2))
