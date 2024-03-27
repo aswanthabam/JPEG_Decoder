@@ -51,6 +51,7 @@ public:
     {
         this->level = level;
         this->message = "";
+        this->type = LogType::INFO;
         return *this;
     }
     Logger operator>>(ostream &out)
@@ -60,21 +61,24 @@ public:
         if (type == LogType::INFO)
             out << "-> ";
         else if (type == LogType::WARNING)
-            out << "WARNING: ";
+            out << "-> WARNING: ";
         else if (type == LogType::ERROR)
-            out << "ERROR: ";
+            out << "-> ERROR: ";
         out << message << endl;
         this->done = true;
+        this->level = 0;
         return Logger();
     }
     Logger operator|(LogType type)
     {
         this->type = type;
+        this->level = 0;
         return *this;
     }
     Logger operator()(LogType type)
     {
         this->type = type;
+        this->level = 0;
         return *this;
     }
 };

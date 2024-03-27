@@ -2,6 +2,8 @@
 #include <string>
 #include <cstring>
 #include "file.h"
+#include "utils.h"
+
 using namespace std;
 
 /*
@@ -118,40 +120,12 @@ public:
 
 bool BitsFromLength(Node *root1, char *element, int code_length);
 
-class HuffmanTable
+class HuffmanTable2
 {
-
-    int hex_to_int(char v)
-    {
-        return (0xff & v);
-    }
-
-    int hex_to_int(char *v, int n)
-    {
-        char *tu = new char[20]();
-        int k = 0;
-        char *u = new char[2]();
-        for (int i = 0; i < n; i++)
-        {
-            delete[] u;
-            u = new char[2];
-            sprintf(u, "%X", hex_to_int(v[i]));
-            if (strlen(u) == 1)
-            {
-                u[1] = u[0];
-                u[0] = '0';
-            }
-            tu[k + 0] = u[0];
-            tu[k + 1] = u[1];
-            k += 2;
-        }
-        unsigned int val = stoi(tu, 0, 16);
-        return val;
-    }
 
 public:
     Node *root;
-    HuffmanTable()
+    HuffmanTable2()
     {
         this->root = new Node(0);
     }
