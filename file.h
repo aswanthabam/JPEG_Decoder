@@ -3,9 +3,9 @@
 using namespace std;
 
 class FileUtils {
-  ifstream *file;
   char *buffer = nullptr;
 public:
+  ifstream *file;
   FileUtils(string filename) {
     file = new ifstream(filename);
   }

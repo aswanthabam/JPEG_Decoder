@@ -1,9 +1,9 @@
 #include <iostream>
 #include <fstream>
 #include <string>
-#include<cstring>
+#include <cstring>
 #include <math.h>
-#include<map>
+#include <map>
 #include "huffman.h"
 #include "idct.h"
 
@@ -20,15 +20,21 @@ public:
     for (int i = 0; i < 8; i++)
     {
       for (int j = 0; j < 8; j++)
-        this->table[i][j] = (int) raw[i * 8 + j];
+        this->table[i][j] = (int)raw[i * 8 + j];
     }
     this->header = header;
   }
-
-  void display() {
-    for (int i = 0;i < 8; i++) {
+  int *operator[](int index)
+  {
+    return table[index];
+  }
+  void display()
+  {
+    for (int i = 0; i < 8; i++)
+    {
       cout << "\t";
-      for (int j = 0; j < 8; j++) {
+      for (int j = 0; j < 8; j++)
+      {
         cout << table[i][j] << " ";
       }
       cout << endl;
@@ -40,11 +46,15 @@ class JPEG
 {
   FileUtils *file;
   QuantizationTable *quantization_table[2];
+  short int quantization_table_index = 0;
   int image_width;
   int image_height;
   int quantMapping[4];
-  map<int, HuffmanTable*> huffman_table;
-
+  map<int, HuffmanTable *> huffman_table;
+  struct IDCTAndCoeff {
+    IDCT *idct;
+    int dc_coeff;
+  };
   string byteToBits(const char bytes)
   {
     string result;
@@ -93,10 +103,59 @@ class JPEG
     else
       return (unsigned int)num;
   }
-  void buildMatrix(BitStream st, int idx, int quant[8][8], int olddccoeff) {
-    IDCT idct;
-    
+
+  int decodeNumber(int code, int bits)
+  {
+    int l = pow(2, code);
+    if (bits >= l)
+      return bits;
+    else
+      return bits - (2 * l - 1);
   }
+  IDCTAndCoeff buildMatrix(BitStream *st, int idx, QuantizationTable *quant, int olddccoeff)
+  {
+    IDCT *i = new IDCT();
+    int code = hex_to_int(this->huffman_table[0 + idx]->getCode(st), 1);
+    int bits = st->getBitN(code);
+    int dccoeff = decodeNumber(code, bits) + olddccoeff;
+    i->base[0] = dccoeff * (*quant[0][0]);
+    // cout << i->base[0];
+    int l = 1;
+    while (l < 64)
+    {
+      code = hex_to_int(this->huffman_table[16 + idx]->getCode(st), 1);
+      if (code == 0)
+      {
+        break;
+      }
+      if (code > 15) {
+        l += code >> 4;
+        code = code & 0xf0;
+      }
+      cout << "CODE : " << code << " ";
+      bits = st->getBitN(code);
+      cout << " BITS : " << bits << " ";
+      if (l < 64) {
+        int coeff = decodeNumber(code, bits);
+        cout << " COEFF : " << coeff * *quant[l / 8][l % 8] << " L : " << l;
+        i->base[l] = (coeff * *quant[l / 8][l % 8]);
+        cout << " " << i->base[l] << " ";
+        l++;
+      }
+      cout << endl;
+    }
+    i->rearrange_zig_zag();
+    for (int k = 0;k < 64; k++) {
+        cout << i->base[k] << " ";
+    }
+    cout << endl;
+    displayMatrix(i->zig_zag, 8, 8);
+    return {i, dccoeff};
+    i->perform();
+    cout << endl;
+    return {i, dccoeff};
+  }
+
 public:
   JPEG(string filename)
   {
@@ -143,24 +202,27 @@ public:
         cout << "\nQuantization Tables\n\n";
         char *length = file->read(2);
         unsigned int len = hex_to_int(length, 2);
-        quantization_table[0] = new QuantizationTable((int)file->read()[0], file->read(64));
-        quantization_table[1] = new QuantizationTable((int)file->read()[0], file->read(64));
-        // quantization_table[1]->display();
+        cout << "# Length : " << len << endl;
+        char header = file->read()[0];
+        cout << "# Header : " << ((header << 4))<< endl;
+        quantization_table[quantization_table_index] = new QuantizationTable(header, file->read(64));
+        quantization_table[quantization_table_index]->display();
         cout << endl;
         delete length;
         delete marker;
+        // break;
       }
       else if (marker[0] == '\xff' && marker[1] == '\xc0')
-      {
+      {break;
         cout << "\nStart of Frame\n\n";
         char *length = file->read(2);
         int len = hex_to_int(length, 2);
-        unsigned int precision =  hex_to_int(file->read(1), 1); // Precision
+        unsigned int precision = hex_to_int(file->read(1), 1); // Precision
         char *height_b = file->read(2);
         char *width_b = file->read(2);
         this->image_width = hex_to_int(width_b, 2);
         this->image_height = hex_to_int(height_b, 2);
-        cout << "# Image Size : " << this->image_width<< "x" << this->image_height << endl;
+        cout << "# Image Size : " << this->image_width << "x" << this->image_height << endl;
         // unsigned int samples = hex_to_int(file->read(), 1);
         unsigned int components = hex_to_int(file->read(), 1);
         for (int i = 0; i < components; i++)
@@ -180,7 +242,7 @@ public:
         unsigned int len = hex_to_int(length, 2);
         // cout << "# Length : " << len << endl;
         char header = file->read()[0];
-        cout << "HUffman Table ["<<(int) header<<"]\n";
+        cout << "HUffman Table [" << (int)header << "]\n";
         // cout << "Class and destination : " << (int) header << ":" << (header & 0x0f) << ":" << ((header >> 4) & 0x0f) << endl;
         int arr[16];
         int n = 0;
@@ -190,7 +252,7 @@ public:
           arr[i] = num;
           n += num;
         }
-        HuffmanTable table;
+        HuffmanTable *table = new HuffmanTable();
         // cout << "# Total number of codes : " << n << endl;
         char **elements = (char **)malloc(sizeof(char *) * n);
         int k = 0;
@@ -209,26 +271,31 @@ public:
           }
           // cout << endl;
         }
-        table.GetHuffmanBits(arr, 16, elements);
-        this->huffman_table[(int)header] = &table;
+        table->GetHuffmanBits(arr, 16, elements);
+        // table.printBT();
+        this->huffman_table[(int)header] = table;
       }
-      else if (marker[0] == '\xff' && marker[1] == '\xda') {
+      else if (marker[0] == '\xff' && marker[1] == '\xda')
+      {
         cout << "\nStart of scan\n\n";
         char *length = file->read(2);
         unsigned int len = hex_to_int(length, 2);
         cout << "# Length : " << len << endl;
         file->read(len > 2 ? len - 2 : 0);
-        BitStream st(file);
-        cout << hex_to_int(huffman_table[3]->getCode(&st),1) << endl;
-        cout << "NONE";
-        // for(int i = 0;i < 1000 * 346;i++) cout << st.getBit();
-        // for (int i = 0;i < 5; i++ ) {
-        //   for (int j = 0; j < 5; i++)
-        //   {
-            
-        //   }
-        //   cout << endl;
-        // }
+        BitStream *st = new BitStream(file);
+
+        int oldLumdccoeff = 0, oldCbdccoeff = 0, oldCrdccoeff = 0;
+        IDCT *matL, *matCr, *matCb;
+        for (int i = 0;i < this->image_height / 8; i++ ) {
+          for (int j = 0; j < this->image_width / 8; i++)
+          {
+            IDCTAndCoeff l = buildMatrix(st, 0, this->quantization_table[this->quantMapping[0]], oldLumdccoeff);
+            // IDCTAndCoeff cr = buildMatrix(st, 1, this->quantization_table[this->quantMapping[1]], oldCrdccoeff);
+            // IDCTAndCoeff cb = buildMatrix(st, 1, this->quantization_table[this->quantMapping[2]], oldCbdccoeff);
+            cout << "FIRST ITER" << endl;
+            return;
+          }
+        }
       }
       else if (marker[0] == '\xff' && marker[1] == '\x00')
       {
@@ -247,7 +314,7 @@ public:
 
 int main()
 {
-  JPEG jpeg("img.jpeg");
+  JPEG jpeg("profile.jpg");
   jpeg.decode();
   return 0;
 }

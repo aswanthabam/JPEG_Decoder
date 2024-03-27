@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
-#include <string.h>
+#include <string>
+#include <cstring>
 using namespace std;
 class Stack {
 public:

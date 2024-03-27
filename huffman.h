@@ -1,6 +1,6 @@
 #include <iostream>
 #include <string>
-#include<cstring>
+#include <cstring>
 #include "file.h"
 using namespace std;
 
@@ -12,12 +12,14 @@ class BitStream
     char st;
     int st_c = -1;
     FileUtils *file;
+
 public:
     BitStream(char st)
     {
         this->st = st;
     }
-    BitStream(FileUtils *file) {
+    BitStream(FileUtils *file)
+    {
         this->file = file;
     }
     int getBit()
@@ -25,6 +27,14 @@ public:
         if (st_c < 0)
         {
             st = *file->read();
+            if (st == '\xff') {
+                char tmp = *file->read();
+                if (tmp == '\x00') {
+                    st = '\xff';
+                } else {
+                    file->file->seekg(-1, ios::cur);
+                }
+            }
             st_c = 7;
         }
         bool bit = (st >> st_c) & 1;
@@ -32,12 +42,14 @@ public:
         return bit;
     }
 
-    int* getBitN(int n) {
-        int *bits = new int[n]();
-        for(int i = 0;i < n;i++) {
-            bits[i] = getBit();
+    int getBitN(int n)
+    {
+        int val = 0;
+        for (int i = 0; i < n; i++)
+        {
+            val = val * 2 + getBit();
         }
-        return bits;
+        return val;
     }
     string byteToBits()
     {
@@ -94,8 +106,10 @@ public:
         return false;
     }
 
-    Node* operator[](int index) {
-        if (index == 0) {
+    Node *operator[](int index)
+    {
+        if (index == 0)
+        {
             return this->left;
         }
         return this->right;
@@ -106,7 +120,6 @@ bool BitsFromLength(Node *root1, char *element, int code_length);
 
 class HuffmanTable
 {
-    Node *root;
 
     int hex_to_int(char v)
     {
@@ -137,6 +150,7 @@ class HuffmanTable
     }
 
 public:
+    Node *root;
     HuffmanTable()
     {
         this->root = new Node(0);
@@ -183,12 +197,10 @@ public:
             {
                 if (node->left->leaf)
                 {
-                    cout << "LEAF" << endl;
                     t += to_string(hex_to_int(node->left->value, 1));
                 }
                 else
                 {
-                    cout << "Traverse" << endl;
                     t += toList(node->left);
                 }
             }
@@ -197,12 +209,10 @@ public:
             {
                 if (node->right->leaf)
                 {
-                    cout << "LEAF (R)" << endl;
                     t += to_string(hex_to_int(node->right->value, 1));
                 }
                 else
                 {
-                    cout << "Traverse (R)" << endl;
                     t += toList(node->right);
                 }
             }
@@ -219,23 +229,21 @@ public:
     {
         cout << toList(this->root) << endl;
     }
-    
-    Node* find(BitStream *st)
+
+    Node *find(BitStream *st)
     {
         Node *r = this->root;
-        while (r != nullptr)
+        while (!r->leaf)
         {
-            r[st->getBit()];
+            int i = st->getBit();
+            r = (i ? r->left : r->right);
         }
         return r;
     }
-    char* getCode(BitStream *st)
+    char *getCode(BitStream *st)
     {
-        while (1)
-        {
-            Node* res = find(st);
-            return res->value;
-        }
+        Node *res = find(st);
+        return res->value;
     }
 
     void printBT(const std::string &prefix, const Node *node, bool isLeft)
@@ -245,7 +253,7 @@ public:
             std::cout << prefix;
             std::cout << (isLeft ? "|.." : "L..");
             // print the value of the node
-            std::cout << (node->value != nullptr ? to_string(hex_to_int(node->value,1)) : "")  << std::endl;
+            std::cout << (node->value != nullptr ? to_string(hex_to_int(node->value, 1)) : "") << std::endl;
             // enter the next tree level - left and right branch
             printBT(prefix + (isLeft ? "|   " : "    "), node->right, true);
             printBT(prefix + (isLeft ? "|   " : "    "), node->left, false);
