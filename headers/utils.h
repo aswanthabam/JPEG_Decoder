@@ -83,3 +83,4 @@ int decodeNumber(int code, int bits)
     else
         return bits - (2 * l - 1);
 }
+

@@ -1,4 +1,4 @@
-// #include <iostream>
+#include <iostream>
 #include <fstream>
 #include <string>
 #include <cstring>
@@ -10,6 +10,17 @@
 
 using namespace logger;
 
+class JPEG;
+void writeBMP(JPEG *image, const MCU* const mcus, const std::string& filename);
+
+
+
+
+
+
+
+
+
 class JPEG
 {
   FileUtils *file;
@@ -19,8 +30,6 @@ class JPEG
   HuffmanTable huffmanDCTTable[4];
   HuffmanTable huffmanACTable[4];
   short int quantization_table_index = 0;
-  int image_width;
-  int image_height;
   int quantMapping[4];
   vector<char> huffmanData;
 
@@ -111,7 +120,8 @@ class JPEG
       show(LogType::ERROR) << "SOF : Not supported, only 3 components are supported" >> cout;
       exit(1);
     }
-    for (int i = 0; i < 3; i++ ) {
+    for (int i = 0; i < 3; i++)
+    {
       int id = (int)marker->read()[0];
       char sampling = marker->read()[0];
       ColorComponent *comp = &this->components[i];
@@ -133,7 +143,8 @@ class JPEG
   {
     int length = marker->length - 2;
     // cout << "Length : " << length << endl;
-    while (length > 0) {
+    while (length > 0)
+    {
       char *tableInfo = marker->read();
       int tableId = (*tableInfo) & 0x0F;
       bool acTable = (*tableInfo) >> 4;
@@ -146,24 +157,27 @@ class JPEG
       HuffmanTable *table;
       if (acTable)
       {
-         table = &huffmanACTable[tableId];
-
-      }else {
+        table = &huffmanACTable[tableId];
+      }
+      else
+      {
         table = &huffmanDCTTable[tableId];
       }
       table->offset[0] = 0;
       int allSymbols = 0;
       for (int i = 1; i <= 16; i++)
       {
-        allSymbols += (int) marker->read()[0];
+        allSymbols += (int)marker->read()[0];
         table->offset[i] = allSymbols;
       }
-      if (allSymbols > 176) {
+      if (allSymbols > 176)
+      {
         show(LogType::ERROR) << "Huffman Table : Invalid number of symbols" >> cout;
         exit(1);
       }
       // cout << "ALL SYMBOLS : " << allSymbols << endl;
-      for (int i = 0; i<allSymbols;i++) {
+      for (int i = 0; i < allSymbols; i++)
+      {
         table->symbols[i] = marker->read()[0];
       }
       length -= allSymbols + 17;
@@ -173,7 +187,7 @@ class JPEG
       show(LogType::ERROR) << "Huffman Table : Invalid DHT" >> cout;
       exit(1);
     }
-    return; 
+    return;
     // char header = marker->read()[0];
     // int arr[16];
     // int n = 0;
@@ -255,8 +269,8 @@ class JPEG
     }
     show[0] << "Start of Scan" >> cout;
     show[1] << "Components : " << components >> cout;
-    show[1] << "Start of selection: " << (int) marker->read()[0] >> cout;
-    show[1] << "End of selection: " << (int) marker->read()[0] >> cout;
+    show[1] << "Start of selection: " << (int)marker->read()[0] >> cout;
+    show[1] << "End of selection: " << (int)marker->read()[0] >> cout;
     show[1] << "Successive Approximation: " << hex_to_int(marker->read(), 1) >> cout;
     show[0] << "Color Components" >> cout;
     for (int i = 0; i < components; i++)
@@ -272,8 +286,8 @@ class JPEG
   }
   void read_entropy_image(FileUtils *file)
   {
-    while(true) {
-
+    while (true)
+    {
     }
     return;
     // show[0] << "Reading Entropy Data" >> cout;
@@ -292,8 +306,166 @@ class JPEG
     //   }
     // }
   }
+  void generateCodes(HuffmanTable &table)
+  {
+    int code = 0;
+    for (int i = 0; i < 16; i++)
+    {
+      for (int j = table.offset[i]; j < table.offset[i + 1]; j++)
+      {
+        table.codes[j] = code;
+        code++;
+      }
+      code <<= 1;
+    }
+  }
+  char getNextSymbol(BitStream *st, const HuffmanTable &table)
+  {
+    int cur = 0;
+    for (int i = 0; i < 16; i++)
+    {
+      int bit = st->getBit();
+      if (bit == -1)
+      {
+        return -1;
+      }
+      cur = (cur << 1) | bit;
+      for (int j = table.offset[i]; j < table.offset[i + 1]; j++)
+      {
+        if (table.codes[j] == cur)
+        {
+          return table.symbols[j];
+        }
+      }
+    }
+    return -1;
+  }
+  bool decodeMCUComponent(BitStream *st, int *const component, int &previousDC, const HuffmanTable &dcTable, const HuffmanTable &acTable)
+  {
+    int length = getNextSymbol(st, dcTable);
+    if (length == -1)
+    {
+      show(LogType::ERROR) << "Invalid DC symbol" >> cout;
+      exit(1);
+    }
+    if (length > 11)
+    {
+      show(LogType::ERROR) << "Invalid DC length" >> cout;
+      exit(1);
+    }
+    int coeff = st->getBitN(length);
+    if (coeff == -1)
+    {
+      show(LogType::ERROR) << "Invalid DC coefficient" >> cout;
+    }
+    if (length != 0 && coeff < (1 << (length - 1)))
+    {
+      coeff += (-1 << length) + 1;
+    }
+    component[0] = coeff + previousDC;
+    previousDC = component[0];
+    int i = 1;
+    while (i < 64)
+    {
+      int symbol = getNextSymbol(st, acTable);
+      if (symbol == -1)
+      {
+        show(LogType::ERROR) << "Invalid AC symbol" >> cout;
+        exit(1);
+      }
+      if (symbol == 0x00)
+      {
+        for (; i < 64; i++)
+        {
+          component[zigZagMap[i]] = 0;
+        }
+        return true;
+      }
+      int numZeros = symbol >> 4;
+      int coeffLength = symbol & 0x0F;
+      int coeff = 0;
+      if (symbol == 0xf0)
+      {
+        numZeros = 16;
+      }
+      if (i + numZeros >= 64)
+      {
+        cout << i << " " << numZeros << endl;
+        show(LogType::ERROR) << "Invalid AC length" >> cout;
+        exit(1);
+      }
+      for (int j = 0; j < numZeros; j++, i++)
+      {
+        component[zigZagMap[i]] = 0;
+        i++;
+      }
+      if (coeffLength > 10)
+      {
+        show(LogType::ERROR) << "Invalid AC length > 10" >> cout;
+        exit(1);
+      }
+      if (coeffLength != 0)
+      {
+        coeff = st->getBitN(coeffLength);
+        if (coeff == -1)
+        {
+          show(LogType::ERROR) << "Invalid AC coefficient" >> cout;
+          exit(1);
+        }
+        if (coeff < (1 << (coeffLength - 1)))
+        {
+          coeff -= (1 << coeffLength) - 1;
+        }
+        component[zigZagMap[i]] = coeff;
+        i++;
+      }
+    }
+    return true;
+  }
+
+  MCU *decodeHuffman()
+  {
+    int mcuHeight = (this->image_height + 7) / 8;
+    int mcuWidth = (this->image_width + 7) / 8;
+    MCU *mcus = new MCU[mcuHeight * mcuWidth];
+    if (mcus == nullptr)
+    {
+      show(LogType::ERROR) << "Memory allocation failed" >> cout;
+      exit(1);
+    }
+    for (int i = 0; i < 4; i++)
+    {
+      generateCodes(huffmanDCTTable[i]);
+      generateCodes(huffmanACTable[i]);
+    }
+    BitStream *st = new BitStream(&this->huffmanData);
+    int previousDC[3] = {0, 0, 0};
+    for (int i = 0; i < mcuHeight * mcuWidth; i++)
+    {
+      // DO Restart DC HERE
+      for (int j = 0; j < 3; j++)
+      {
+        if (!decodeMCUComponent(st, mcus[i][j],
+                                previousDC[j],
+                                this->huffmanDCTTable[this->components[j].huffmanDCTTableID],
+                                this->huffmanACTable[this->components[j].huffmanACTableID]))
+        {
+          cout << "FALSE HIT" << endl;
+          delete[] mcus;
+          return nullptr;
+        }
+        for(int k = 0; k < 64; k++)
+        {
+          // std::cout << mcus[i][j][k] << " ";
+        }
+      }
+    }
+    return mcus;
+  }
 
 public:
+  int image_width;
+  int image_height;
   JPEG(string filename)
   {
     file = new FileUtils(filename);
@@ -338,7 +510,8 @@ public:
         else if (marker->type == MarkerType::SOS)
         {
           read_sos(marker);
-          read_entropy_image(file);
+          // read_entropy_image(file);
+          break;
         }
 
         else if (marker->type == MarkerType::DRI)
@@ -384,8 +557,123 @@ public:
       }
       delete marker;
     }
+      char current = *file->read(1);
+      char last;
+    while (true) {
+      last = current;
+      current = *file->read(1);
+      // cout << to_hex_string(&last, 1) << " " << to_hex_string(&current, 1) << endl;
+      if (last == '\xff') {
+        if (current == '\xd9') {
+          break;
+        } else if (current == '\x00') {
+          huffmanData.push_back(last);
+          current = *file->read(1);
+        } else if (current >= '\xd0' && current <= '\xd7') {
+          current = *file->read(1);
+        } else if (current == '\xff') {
+          //
+        }
+        else {
+          show(LogType::ERROR) << "Invalid marker, May be an unexpected format occured!(" << to_hex_string(&current, 1) << ")" >> cout;
+          return;
+        }
+      }else {
+        huffmanData.push_back(last);
+      }
+    }
+    MCU *mcus = decodeHuffman();
+    cout <<  mcus[0].y << endl;
+    string filename = "img.jpg";
+    const std::size_t pos = filename.find_last_of('.');
+    const std::string outFilename = (pos == std::string::npos) ? (filename + ".bmp") : (filename.substr(0, pos) + ".bmp");
+        
+    writeBMP(this, mcus, outFilename);
+    cout << "HURAH!!!"  << endl;
   }
 };
+
+
+
+
+// helper function to write a 4-byte integer in little-endian
+void putInt(std::ofstream& outFile, const int v) {
+    outFile.put((v >>  0) & 0xFF);
+    outFile.put((v >>  8) & 0xFF);
+    outFile.put((v >> 16) & 0xFF);
+    outFile.put((v >> 24) & 0xFF);
+}
+
+// helper function to write a 2-byte short integer in little-endian
+void putShort(std::ofstream& outFile, const int v) {
+    outFile.put((v >>  0) & 0xFF);
+    outFile.put((v >>  8) & 0xFF);
+}
+
+// write all the pixels in the MCUs to a BMP file
+void writeBMP(JPEG *image, const MCU* const mcus, const std::string& filename) {
+    cout << "WRITING BMP FILE" << endl;
+    std::ofstream outFile = std::ofstream(filename, std::ios::out | std::ios::binary);
+    if (!outFile.is_open()) {
+        std::cout << "Error - Error opening output file\n";
+        return;
+    }
+
+    const int mcuHeight = (image->image_height + 7) / 8;
+    const int mcuWidth = (image->image_width + 7) / 8;
+    const int paddingSize = (4 - (image->image_width * 3) % 4) % 4;
+    const int size = 14 + 12 + image->image_height * image->image_width * 3 + image->image_height * paddingSize;
+
+    outFile.put('B');
+    outFile.put('M');
+    putInt(outFile, size);
+    putInt(outFile, 0);
+    putInt(outFile, 0x1A);
+    putInt(outFile, 12);
+    putShort(outFile, image->image_width);
+    putShort(outFile, image->image_height);
+    putShort(outFile, 1);
+    putShort(outFile, 24);
+
+    for (int i = image->image_height - 1; i < image->image_height; --i) {
+        const int mcuRow = i / 8;
+        const int pixelRow = i % 8;
+        for (int j = 0; j < image->image_width; ++j) {
+            const int mcuColumn = j / 8;
+            const int pixelColumn = j % 8;
+            const int mcuIndex = mcuRow * mcuWidth + mcuColumn;
+            const int pixelIndex = pixelRow * 8 + pixelColumn;
+    cout << "HERE" << mcus[mcuIndex].b << " " << pixelIndex << endl;
+            outFile.put(mcus[mcuIndex].y[pixelIndex]);
+            outFile.put(mcus[mcuIndex].cb[pixelIndex]);
+            outFile.put(mcus[mcuIndex].cr[pixelIndex]);
+        }
+        for (int j = 0; j < paddingSize; ++j) {
+            outFile.put(0);
+        }
+    }
+
+    outFile.close();
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 int main(int argc, char **argv)
 {

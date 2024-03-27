@@ -1,6 +1,7 @@
 #include <iostream>
 #include <string>
 #include <cstring>
+#include <vector>
 #include "file.h"
 #include "utils.h"
 
@@ -14,11 +15,19 @@ class BitStream
     char st;
     int st_c = -1;
     FileUtils *file;
-
+    vector<char> *st_v;
+    unsigned int st_v_i = 0;
+    int size = 0;
 public:
     BitStream(char st)
     {
         this->st = st;
+    }
+    BitStream(vector<char> *st)
+    {
+        this->st = st->at(0);
+        this->size = st->size();
+        this->st_v = st;
     }
     BitStream(FileUtils *file)
     {
@@ -26,15 +35,31 @@ public:
     }
     int getBit()
     {
+        if (file == nullptr && st_v_i >= size) return -1;
+        if (file != nullptr && file->file->eof()) return -1;
+        
         if (st_c < 0)
         {
-            st = *file->read();
+            if (file == nullptr) {
+                st = st_v->at(st_v_i);
+                st_v_i++;
+            }
+            else st = *file->read();
             if (st == '\xff') {
-                char tmp = *file->read();
+                char tmp;
+                if (file == nullptr) {
+                    tmp = st_v->at(st_v_i);
+                    st_v_i++;
+                }
+                else tmp = *file->read();
                 if (tmp == '\x00') {
                     st = '\xff';
                 } else {
-                    file->file->seekg(-1, ios::cur);
+                    if (file == nullptr) {
+                        st_v_i--;
+                    } else {
+                        file->file->seekg(-1, ios::cur);
+                    }
                 }
             }
             st_c = 7;

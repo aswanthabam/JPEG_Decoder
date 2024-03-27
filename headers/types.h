@@ -4,17 +4,57 @@
 
 using namespace logger;
 
-struct HuffmanTable {
-    char offset[17] = {0};
-    char symbols[162] = {0};
+struct MCU
+{
+  union
+  {
+    int y[64] = {0};
+    int r[64];
+  };
+
+  union
+  {
+    int cb[64] = {0};
+    int g[64];
+  };
+
+  union
+  {
+    int cr[64] = {0};
+    int b[64];
+  };
+
+  int *operator[](int index)
+  {
+    switch (index)
+    {
+    case 0:
+      return y;
+    case 1:
+      return cb;
+    case 2:
+      return cr;
+
+    default:
+      return nullptr;
+    }
+  }
 };
 
-struct ColorComponent {
-    int horizontal_sampling_factor = 0;
-    int vertical_sampling_factor = 0;
-    int quantizationTableID = 0;
-    int huffmanDCTTableID = 0;
-    int huffmanACTableID = 0;
+struct HuffmanTable
+{
+  char offset[17] = {0};
+  char symbols[162] = {0};
+  int codes[162] = {0};
+};
+
+struct ColorComponent
+{
+  int horizontal_sampling_factor = 0;
+  int vertical_sampling_factor = 0;
+  int quantizationTableID = 0;
+  int huffmanDCTTableID = 0;
+  int huffmanACTableID = 0;
 };
 
 struct IDCTAndCoeff
@@ -33,9 +73,9 @@ public:
   {
     for (int i = 0; i < 8; i++)
     {
-      for (int j = 0; j < 8 ; j ++)
+      for (int j = 0; j < 8; j++)
       {
-          this->table[i][j] = (int)raw[zigZagMap[i * 8 + j]];
+        this->table[i][j] = (int)raw[zigZagMap[i * 8 + j]];
       }
     }
     this->header = header;
@@ -138,7 +178,7 @@ public:
     default:
       this->type = MarkerType::INVALID;
     }
-    this->length = (file->file->get() << 8) + file->file->get(); 
+    this->length = (file->file->get() << 8) + file->file->get();
     this->data = file->read(this->length - 2);
   }
 
