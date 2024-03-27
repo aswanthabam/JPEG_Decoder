@@ -4,9 +4,9 @@
 #include <cstring>
 #include <math.h>
 #include <map>
-#include "huffman.h"
-#include "idct.h"
-#include "logger.h"
+#include "headers/huffman.h"
+#include "headers/idct.h"
+#include "headers/logger.h"
 
 using namespace logger;
 
