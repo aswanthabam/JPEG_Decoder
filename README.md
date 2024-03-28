@@ -15,7 +15,7 @@ Project Aimed for practicing JPEG Compression Algorithm. In this we use c++ for 
 
 ### Run 
 
-```
+```bash
 g++ jpeg.cpp
 ./a.out <image_path>
 ```
