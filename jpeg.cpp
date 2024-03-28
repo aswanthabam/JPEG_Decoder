@@ -11,7 +11,7 @@
 using namespace logger;
 
 class JPEG;
-void writeBMP(JPEG *image, const MCU *const mcus, const std::string &filename);
+void writeBMP(const JPEG *image, const MCU *const mcus, const std::string &filename);
 
 class JPEG
 {
@@ -20,14 +20,12 @@ class JPEG
   ColorComponent color_components[3];                // color components
   HuffmanTable huffmanDCTTable[4];                   // Huffman Tables DCT
   HuffmanTable huffmanACTable[4];                    // Huffman Tables AC
-  vector<char> huffmanData;                          // Huffman Coded Data
+  vector<unsigned char> huffmanData;                 // Huffman Coded Data
   int restartInterval = 0;                           // Restart Interval
   bool zeroBased = false;                            // is the componet ids zero based or not
   short int numComponents = 0;                       // Number of components
   int mcuWidth = 0;                                  // MCU Width
   int mcuHeight = 0;                                 // MCU Height
-  int mcuWidthReal = 0;                              // MCU Width Real
-  int mcuHeightReal = 0;                             // MCU Height Real
   int horizontalSamplingFactor = 0;                  // Horizontal Sampling Factor
   int verticalSamplingFactor = 0;                    // Vertical Sampling Factor
 
@@ -454,6 +452,8 @@ class JPEG
                                       this->huffmanDCTTable[this->color_components[i].huffmanDCTTableID],
                                       this->huffmanACTable[this->color_components[i].huffmanACTableID]))
               {
+                show(LogType::ERROR) << "Failed to decode MCU" >> cout;
+                exit(1);
                 delete[] mcus;
                 return nullptr;
               }
@@ -466,8 +466,10 @@ class JPEG
   }
 
 public:
-  int image_width;  // Image Width
-  int image_height; // Image Height
+  int image_width;       // Image Width
+  int image_height;      // Image Height
+  int mcuHeightReal = 0; // MCU Height Real
+  int mcuWidthReal = 0;  // MCU Width Real
   JPEG(string filename)
   {
     file = new FileUtils(filename);
@@ -652,9 +654,10 @@ void putShort(std::ofstream &outFile, const int v)
 }
 
 // write all the pixels in the MCUs to a BMP file
-void writeBMP(JPEG *image, const MCU *const mcus, const std::string &filename)
+// write all the pixels in the MCUs to a BMP file
+void writeBMP(const JPEG *const image, const MCU *const mcus, const std::string &filename)
 {
-  cout << "WRITING BMP FILE" << endl;
+  // open file
   std::ofstream outFile = std::ofstream(filename, std::ios::out | std::ios::binary);
   if (!outFile.is_open())
   {
@@ -662,10 +665,8 @@ void writeBMP(JPEG *image, const MCU *const mcus, const std::string &filename)
     return;
   }
 
-  const int mcuHeight = (image->image_height + 7) / 8;
-  const int mcuWidth = (image->image_width + 7) / 8;
-  const int paddingSize = (4 - (image->image_width * 3) % 4) % 4;
-  const int size = 14 + 12 + image->image_height * image->image_width * 3 + image->image_height * paddingSize;
+  const int paddingSize = image->image_width % 4;
+  const int size = 14 + 12 + image->image_height * image->image_width * 3 + paddingSize * image->image_height;
 
   outFile.put('B');
   outFile.put('M');
@@ -678,34 +679,27 @@ void writeBMP(JPEG *image, const MCU *const mcus, const std::string &filename)
   putShort(outFile, 1);
   putShort(outFile, 24);
 
-  for (int i = image->image_height - 1; i < image->image_height; --i)
+  for (int y = image->image_height - 1; y < image->image_height; --y)
   {
-    const int mcuRow = i / 8;
-    const int pixelRow = i % 8;
-    for (int j = 0; j < image->image_width; ++j)
+    const int mcuRow = y / 8;
+    const int pixelRow = y % 8;
+    for (int x = 0; x < image->image_width; ++x)
     {
-      const int mcuColumn = j / 8;
-      const int pixelColumn = j % 8;
-      const int mcuIndex = mcuRow * mcuWidth + mcuColumn;
+      const int mcuColumn = x / 8;
+      const int pixelColumn = x % 8;
+      const int mcuIndex = mcuRow * image->mcuWidthReal + mcuColumn;
       const int pixelIndex = pixelRow * 8 + pixelColumn;
-      // cout << "HERE" << mcus[mcuIndex].b << " " << pixelIndex << endl;
-      // cout << "DONE 0" << endl;
       outFile.put(mcus[mcuIndex].y[pixelIndex]);
-      // cout << "DONE 1" << endl;
       outFile.put(mcus[mcuIndex].cr[pixelIndex]);
-      // cout << "DONE 2" << endl;
       outFile.put(mcus[mcuIndex].cb[pixelIndex]);
-      // cout << "DONE 3" << endl;
     }
-    // cout << "DONE THIS ROW" << endl;
-    for (int j = 0; j < paddingSize; ++j)
+    for (int i = 0; i < paddingSize; ++i)
     {
       outFile.put(0);
     }
-    // cout << "DONE THIS ROW 2" << endl;
   }
-  cout << "DONE";
-  // outFile.close();
+
+  outFile.close();
 }
 
 int main(int argc, char **argv)

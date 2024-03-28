@@ -12,10 +12,10 @@ using namespace std;
 */
 class BitStream
 {
-    char st;
+    unsigned char st;
     int st_c = -1;
     FileUtils *file;
-    vector<char> *st_v;
+    vector<unsigned char> *st_v;
     int st_v_i = 0;
     int size = 0;
 
@@ -24,7 +24,7 @@ public:
     {
         this->st = st;
     }
-    BitStream(vector<char> *st)
+    BitStream(vector<unsigned char> *st)
     {
         this->st = st->at(0);
         this->size = st->size();

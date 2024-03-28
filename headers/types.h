@@ -46,8 +46,8 @@ class HuffmanTable
 
 public:
   char offset[17] = {0};
-  char symbols[162] = {0};
-  int codes[162] = {0};
+  unsigned char symbols[162] = {0};
+  unsigned int codes[162] = {0};
   bool set = false;
   void display()
   {
