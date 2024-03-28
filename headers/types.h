@@ -46,6 +46,7 @@ struct HuffmanTable
   char offset[17] = {0};
   char symbols[162] = {0};
   int codes[162] = {0};
+  bool set = false;
 };
 
 struct ColorComponent
@@ -55,6 +56,7 @@ struct ColorComponent
   int quantizationTableID = 0;
   int huffmanDCTTableID = 0;
   int huffmanACTableID = 0;
+  bool set = false;
 };
 
 struct IDCTAndCoeff
@@ -69,6 +71,7 @@ class QuantizationTable
   int header;
 
 public:
+  bool set = false;
   QuantizationTable(int header, char *raw)
   {
     for (int i = 0; i < 8; i++)

@@ -18,6 +18,7 @@ class BitStream
     vector<char> *st_v;
     unsigned int st_v_i = 0;
     int size = 0;
+
 public:
     BitStream(char st)
     {
@@ -35,33 +36,38 @@ public:
     }
     int getBit()
     {
-        if (file == nullptr && st_v_i >= size) return -1;
-        if (file != nullptr && file->file->eof()) return -1;
-        
+
         if (st_c < 0)
         {
-            if (file == nullptr) {
+            if (file == nullptr && st_v_i >= size || file != nullptr && file->file->eof())
+            {
+                cout << "END OF FILE\n";
+                return -1;
+            }
+            if (file == nullptr)
+            {
                 st = st_v->at(st_v_i);
                 st_v_i++;
             }
-            else st = *file->read();
-            if (st == '\xff') {
-                char tmp;
-                if (file == nullptr) {
-                    tmp = st_v->at(st_v_i);
-                    st_v_i++;
-                }
-                else tmp = *file->read();
-                if (tmp == '\x00') {
-                    st = '\xff';
-                } else {
-                    if (file == nullptr) {
-                        st_v_i--;
-                    } else {
-                        file->file->seekg(-1, ios::cur);
-                    }
-                }
-            }
+            else
+                st = *file->read();
+            // if (st == '\xff') {
+            //     char tmp;
+            //     if (file == nullptr) {
+            //         tmp = st_v->at(st_v_i);
+            //         st_v_i++;
+            //     }
+            //     else tmp = *file->read();
+            //     if (tmp == '\x00') {
+            //         st = '\xff';
+            //     } else {
+            //         if (file == nullptr) {
+            //             st_v_i--;
+            //         } else {
+            //             file->file->seekg(-1, ios::cur);
+            //         }
+            //     }
+            // }
             st_c = 7;
         }
         bool bit = (st >> st_c) & 1;
@@ -74,9 +80,15 @@ public:
         int val = 0;
         for (int i = 0; i < n; i++)
         {
-            val = val * 2 + getBit();
+            int bit = getBit();
+            if (bit == -1)
+                break;
+            val = (val << 1) | bit;
         }
         return val;
+    }
+    void align() {
+        this->st_c = -1;
     }
     string byteToBits()
     {

@@ -11,68 +11,26 @@
 using namespace logger;
 
 class JPEG;
-void writeBMP(JPEG *image, const MCU* const mcus, const std::string& filename);
-
-
-
-
-
-
-
-
+void writeBMP(JPEG *image, const MCU *const mcus, const std::string &filename);
 
 class JPEG
 {
-  FileUtils *file;
-  QuantizationTable *quantization_table[2];
-  ColorComponent components[3];
-  map<int, HuffmanTable *> huffman_table;
-  HuffmanTable huffmanDCTTable[4];
-  HuffmanTable huffmanACTable[4];
-  short int quantization_table_index = 0;
-  int quantMapping[4];
-  vector<char> huffmanData;
+  FileUtils *file;                                   // File object
+  map<int, QuantizationTable *> quantization_tables; // Quantization Tables
+  ColorComponent color_components[3];                // color components
+  HuffmanTable huffmanDCTTable[4];                   // Huffman Tables DCT
+  HuffmanTable huffmanACTable[4];                    // Huffman Tables AC
+  vector<char> huffmanData;                          // Huffman Coded Data
+  int restartInterval = 0;                           // Restart Interval
+  bool zeroBased = false;                            // is the componet ids zero based or not
+  short int numComponents = 0;                       // Number of components
+  int mcuWidth = 0;                                  // MCU Width
+  int mcuHeight = 0;                                 // MCU Height
+  int mcuWidthReal = 0;                              // MCU Width Real
+  int mcuHeightReal = 0;                             // MCU Height Real
+  int horizontalSamplingFactor = 0;                  // Horizontal Sampling Factor
+  int verticalSamplingFactor = 0;                    // Vertical Sampling Factor
 
-  // IDCTAndCoeff buildMatrix(BitStream *st, int idx, QuantizationTable *quant, int olddccoeff)
-  // {
-  //   IDCT *i = new IDCT();
-  //   int code = hex_to_int(this->huffman_table[0 + idx]->getCode(st), 1);
-  //   int bits = st->getBitN(code);
-  //   int dccoeff = decodeNumber(code, bits) + olddccoeff;
-  //   show << "DC Coeff : " << (*quant[0][0]) << " " << i->base[0] >> cout;
-  //   i->base[0] = dccoeff * (*quant[0][0]);
-  //   int l = 1;
-  //   while (l < 64)
-  //   {
-  //     code = hex_to_int(this->huffman_table[16 + idx]->getCode(st), 1);
-  //     if (code == 0)
-  //     {
-  //       break;
-  //     }
-  //     if (code > 15)
-  //     {
-  //       l += code >> 4;
-  //       code = code & 0xf0;
-  //     }
-  //     bits = st->getBitN(code);
-  //     if (l < 64)
-  //     {
-  //       int coeff = decodeNumber(code, bits);
-  //       i->base[l] = (coeff * *quant[l / 8][l % 8]);
-  //       cout << " " << i->base[l] << " ";
-  //       l++;
-  //     }
-  //     cout << endl;
-  //   }
-  //   i->rearrange_zig_zag();
-  //   for (int k = 0; k < 64; k++)
-  //   {
-  //     cout << i->base[k] << " ";
-  //   }
-  //   cout << endl;
-  //   i->perform();
-  //   return {i, dccoeff};
-  // }
   /* Read application headers of a given image */
   void read_application_headers(Marker *marker)
   {
@@ -114,41 +72,85 @@ class JPEG
     int precision = (int)marker->read()[0];
     this->image_width = hex_to_int(marker->read(2), 2);
     this->image_height = hex_to_int(marker->read(2), 2);
+    this->mcuWidth = (this->image_width + 7) / 8;
+    this->mcuHeight = (this->image_height + 7) / 8;
+    this->mcuWidthReal = this->image_width;
+    this->mcuHeightReal = this->image_height;
     int components = (int)marker->read()[0];
+    this->numComponents = components;
     if (components != 3)
     {
       show(LogType::ERROR) << "SOF : Not supported, only 3 components are supported" >> cout;
       exit(1);
     }
-    for (int i = 0; i < 3; i++)
+    for (int i = 0; i < components; i++)
     {
       int id = (int)marker->read()[0];
+      if (id == 0)
+      {
+        zeroBased = true;
+      }
+      if (!zeroBased && id > 3)
+      {
+        show(LogType::ERROR) << "SOF : Invalid component ID" >> cout;
+        exit(1);
+      }
+      if (zeroBased && id > 2)
+      {
+        show(LogType::ERROR) << "SOF : Invalid component ID" >> cout;
+        exit(1);
+      }
       char sampling = marker->read()[0];
-      ColorComponent *comp = &this->components[i];
+      ColorComponent *comp = &this->color_components[i];
       comp->horizontal_sampling_factor = (sampling >> 4);
       comp->vertical_sampling_factor = (sampling & 0x0F);
       comp->quantizationTableID = (int)marker->read()[0];
+      if (id == 1)
+      {
+        if ((comp->horizontal_sampling_factor != 1 && comp->horizontal_sampling_factor != 2) ||
+            (comp->vertical_sampling_factor != 1 && comp->vertical_sampling_factor != 2))
+        {
+          show(LogType::ERROR) << "SOF : Invalid sampling factors" >> cout;
+          exit(1);
+        }
+        if (comp->horizontal_sampling_factor == 2 && this->mcuWidth % 2 == 1)
+        {
+          this->mcuWidthReal += 1;
+        }
+        if (comp->vertical_sampling_factor == 2 && this->mcuHeight % 2 == 1)
+        {
+          this->mcuHeightReal += 1;
+        }
+        this->horizontalSamplingFactor = comp->horizontal_sampling_factor;
+        this->verticalSamplingFactor = comp->vertical_sampling_factor;
+      }
+      else
+      {
+        if (comp->horizontal_sampling_factor != 1 || comp->vertical_sampling_factor != 1)
+        {
+          show(LogType::ERROR) << "SOF : Invalid sampling factors" >> cout;
+          exit(1);
+        }
+      }
     }
     show[0] << "Start of Frame" >> cout;
     show[1] << "Image Size : " << this->image_width << "x" << this->image_height >> cout;
     show[1] << "Components : " << components >> cout;
     for (int i = 0; i < components; i++)
     {
-      show[2] << "Component " << i + 1 << " : " << this->components[i].horizontal_sampling_factor << "x" << this->components[i].vertical_sampling_factor >> cout;
-      show[2] << "Quantization Table : " << this->components[i].quantizationTableID >> cout;
+      show[2] << "Component " << i + 1 << " : " << this->color_components[i].horizontal_sampling_factor << "x" << this->color_components[i].vertical_sampling_factor >> cout;
+      show[2] << "Quantization Table : " << this->color_components[i].quantizationTableID >> cout;
     }
   }
 
   void read_huffman_table(Marker *marker)
   {
     int length = marker->length - 2;
-    // cout << "Length : " << length << endl;
     while (length > 0)
     {
       char *tableInfo = marker->read();
       int tableId = (*tableInfo) & 0x0F;
       bool acTable = (*tableInfo) >> 4;
-      // cout << "TABLE ID : " << tableId << " AC : " << acTable << endl;
       if (tableId > 3)
       {
         show(LogType::ERROR) << "Huffman Table : Invalid table ID" >> cout;
@@ -180,6 +182,7 @@ class JPEG
       {
         table->symbols[i] = marker->read()[0];
       }
+      table->set = true;
       length -= allSymbols + 17;
     }
     if (length != 0)
@@ -188,33 +191,6 @@ class JPEG
       exit(1);
     }
     return;
-    // char header = marker->read()[0];
-    // int arr[16];
-    // int n = 0;
-    // for (int i = 0; i < 16; i++)
-    // {
-    //   int num = hex_to_int(marker->read(), 1);
-    //   arr[i] = num;
-    //   n += num;
-    // }
-    // HuffmanTable *table = new HuffmanTable();
-    // char **elements = (char **)malloc(sizeof(char *) * n);
-    // int k = 0;
-    // for (int i = 0; i < 16; i++)
-    // {
-    //   if (arr[i] == 0)
-    //   {
-    //     continue;
-    //   }
-    //   for (int j = 0; j < arr[i]; j++)
-    //   {
-    //     elements[k] = marker->read();
-    //     k++;
-    //   }
-    // }
-    // // table->GetHuffmanBits(arr, 16, elements);
-    // this->huffman_table[(int)header] = table;
-    // show[0] << "Got Huffman Table [" << (int)header << "]" >> cout;
   }
   void read_quantization_table(Marker *marker)
   {
@@ -245,7 +221,8 @@ class JPEG
         arr = marker->read(64);
         length -= 64;
       }
-      quantization_table[tableID] = new QuantizationTable(tableID, arr);
+      this->quantization_tables[tableID] = new QuantizationTable(tableID, arr);
+      this->quantization_tables[tableID]->set = true;
       show[0](LogType::INFO) << "Got Quantization Table [" << tableID << "]" >> cout;
       // quantization_table[tableID]->display();
     }
@@ -262,49 +239,60 @@ class JPEG
     for (int i = 0; i < components; i++)
     {
       int id = (int)marker->read()[0]; // ID
-      ColorComponent *comp = &this->components[i];
+      ColorComponent *comp = &this->color_components[i];
       char huff = marker->read()[0];
       comp->huffmanDCTTableID = huff >> 4;
       comp->huffmanACTableID = huff & 0x0f;
     }
+    int startOfScan = (int)marker->read()[0];
+    int endOfScan = (int)marker->read()[0];
+    int approximation = (int)marker->read()[0];
+    int successiveApproximationHigh = approximation >> 4;
+    int successiveApproximationLow = approximation & 0x0f;
+
+    if (startOfScan != 0 || endOfScan != 63)
+    {
+      show(LogType::ERROR) << "SOS : Invalid start or end of scan" >> cout;
+      exit(1);
+    }
+    if (successiveApproximationHigh != 0 || successiveApproximationLow != 0)
+    {
+      show(LogType::ERROR) << "SOS : Invalid successive approximation" >> cout;
+      exit(1);
+    }
     show[0] << "Start of Scan" >> cout;
     show[1] << "Components : " << components >> cout;
-    show[1] << "Start of selection: " << (int)marker->read()[0] >> cout;
-    show[1] << "End of selection: " << (int)marker->read()[0] >> cout;
-    show[1] << "Successive Approximation: " << hex_to_int(marker->read(), 1) >> cout;
+    show[1] << "Start of selection: " << startOfScan >> cout;
+    show[1] << "End of selection: " << endOfScan >> cout;
+    show[1] << "Successive Approximation: " << successiveApproximationHigh << " : " << successiveApproximationLow >> cout;
+
     show[0] << "Color Components" >> cout;
     for (int i = 0; i < components; i++)
     {
       show[1] << "Component " << i + 1 >> cout;
-      show[2] << "Huffman DC Table : " << this->components[i].huffmanDCTTableID >> cout;
-      show[2] << " Huffman AC Table : " << this->components[i].huffmanACTableID >> cout;
-      show[2] << "Quantization Table : " << this->components[i].quantizationTableID >> cout;
-      show[2] << "Horizontal Sampling Factor : " << this->components[i].horizontal_sampling_factor >> cout;
-      show[2] << "Vertical Sampling Factor : " << this->components[i].vertical_sampling_factor >> cout;
-      show[2] << "Quantization Table : " << this->components[i].quantizationTableID >> cout;
+      show[2] << "Huffman DC Table : " << this->color_components[i].huffmanDCTTableID >> cout;
+      show[2] << " Huffman AC Table : " << this->color_components[i].huffmanACTableID >> cout;
+      show[2] << "Quantization Table : " << this->color_components[i].quantizationTableID >> cout;
+      show[2] << "Horizontal Sampling Factor : " << this->color_components[i].horizontal_sampling_factor >> cout;
+      show[2] << "Vertical Sampling Factor : " << this->color_components[i].vertical_sampling_factor >> cout;
+      show[2] << "Quantization Table : " << this->color_components[i].quantizationTableID >> cout;
+    }
+    if (marker->length - 6 - (2 * components) != 0)
+    {
+      show(LogType::ERROR) << "SOS : Invalid length of SOS" >> cout;
+      exit(1);
     }
   }
-  void read_entropy_image(FileUtils *file)
+
+  void read_dri(Marker *marker)
   {
-    while (true)
+    this->restartInterval = hex_to_int(marker->read(2), 2);
+    if (marker->length - 4 != 0)
     {
+      show(LogType::ERROR) << "DRI : Invalid length" >> cout;
+      exit(1);
     }
-    return;
-    // show[0] << "Reading Entropy Data" >> cout;
-    // BitStream *st = new BitStream(file);
-    // int oldLumdccoeff = 0, oldCbdccoeff = 0, oldCrdccoeff = 0;
-    // IDCT *matL, *matCr, *matCb;
-    // for (int i = 0; i < this->image_height / 8; i++)
-    // {
-    //   for (int j = 0; j < this->image_width / 8; i++)
-    //   {
-    //     // IDCTAndCoeff l = buildMatrix(st, 0, this->quantization_table[this->quantMapping[0]], oldLumdccoeff);
-    //     // IDCTAndCoeff cr = buildMatrix(st, 1, this->quantization_table[this->quantMapping[1]], oldCrdccoeff);
-    //     // IDCTAndCoeff cb = buildMatrix(st, 1, this->quantization_table[this->quantMapping[2]], oldCbdccoeff);
-    //     cout << "FIRST ITER" << endl;
-    //     return;
-    //   }
-    // }
+    show[0] << "Restart Interval : " << this->restartInterval >> cout;
   }
   void generateCodes(HuffmanTable &table)
   {
@@ -345,7 +333,7 @@ class JPEG
     int length = getNextSymbol(st, dcTable);
     if (length == -1)
     {
-      show(LogType::ERROR) << "Invalid DC symbol" >> cout;
+      show(LogType::ERROR) << "Invalid DC symbol (hmm)" >> cout;
       exit(1);
     }
     if (length > 11)
@@ -360,7 +348,7 @@ class JPEG
     }
     if (length != 0 && coeff < (1 << (length - 1)))
     {
-      coeff += (-1 << length) + 1;
+      coeff -= (1 << length) - 1;
     }
     component[0] = coeff + previousDC;
     previousDC = component[0];
@@ -373,6 +361,7 @@ class JPEG
         show(LogType::ERROR) << "Invalid AC symbol" >> cout;
         exit(1);
       }
+
       if (symbol == 0x00)
       {
         for (; i < 64; i++)
@@ -384,6 +373,7 @@ class JPEG
       int numZeros = symbol >> 4;
       int coeffLength = symbol & 0x0F;
       int coeff = 0;
+      // cout << i << " 0s " << numZeros << " len " << coeffLength << endl;
       if (symbol == 0xf0)
       {
         numZeros = 16;
@@ -397,7 +387,6 @@ class JPEG
       for (int j = 0; j < numZeros; j++, i++)
       {
         component[zigZagMap[i]] = 0;
-        i++;
       }
       if (coeffLength > 10)
       {
@@ -425,9 +414,7 @@ class JPEG
 
   MCU *decodeHuffman()
   {
-    int mcuHeight = (this->image_height + 7) / 8;
-    int mcuWidth = (this->image_width + 7) / 8;
-    MCU *mcus = new MCU[mcuHeight * mcuWidth];
+    MCU *mcus = new MCU[this->mcuWidthReal * this->mcuHeightReal];
     if (mcus == nullptr)
     {
       show(LogType::ERROR) << "Memory allocation failed" >> cout;
@@ -435,28 +422,41 @@ class JPEG
     }
     for (int i = 0; i < 4; i++)
     {
-      generateCodes(huffmanDCTTable[i]);
-      generateCodes(huffmanACTable[i]);
+      if (this->huffmanDCTTable[i].set)
+        generateCodes(this->huffmanDCTTable[i]);
+      if (this->huffmanACTable[i].set)
+        generateCodes(huffmanACTable[i]);
     }
     BitStream *st = new BitStream(&this->huffmanData);
     int previousDC[3] = {0, 0, 0};
-    for (int i = 0; i < mcuHeight * mcuWidth; i++)
+    int restartInterval = this->restartInterval * this->horizontalSamplingFactor * this->verticalSamplingFactor;
+    for (int y = 0; y < this->mcuHeight; y += this->verticalSamplingFactor)
     {
-      // DO Restart DC HERE
-      for (int j = 0; j < 3; j++)
+      for (int x = 0; x < this->mcuWidth; x += this->horizontalSamplingFactor)
       {
-        if (!decodeMCUComponent(st, mcus[i][j],
-                                previousDC[j],
-                                this->huffmanDCTTable[this->components[j].huffmanDCTTableID],
-                                this->huffmanACTable[this->components[j].huffmanACTableID]))
+        if (restartInterval != 0 && (y * this->mcuWidthReal + x) % restartInterval == 0)
         {
-          cout << "FALSE HIT" << endl;
-          delete[] mcus;
-          return nullptr;
+          previousDC[0] = 0;
+          previousDC[1] = 0;
+          previousDC[2] = 0;
+          st->align();
         }
-        for(int k = 0; k < 64; k++)
+        for (int i = 0; i < this->numComponents; ++i)
         {
-          // std::cout << mcus[i][j][k] << " ";
+          for (int v = 0; v < this->color_components[i].vertical_sampling_factor; ++v)
+          {
+            for (int h = 0; h < this->color_components[i].horizontal_sampling_factor; ++h)
+            {
+              if (!decodeMCUComponent(st, mcus[(y + v) * this->mcuWidthReal + (x + h)][i],
+                                      previousDC[i],
+                                      this->huffmanDCTTable[this->color_components[i].huffmanDCTTableID],
+                                      this->huffmanACTable[this->color_components[i].huffmanACTableID]))
+              {
+                delete[] mcus;
+                return nullptr;
+              }
+            }
+          }
         }
       }
     }
@@ -464,8 +464,8 @@ class JPEG
   }
 
 public:
-  int image_width;
-  int image_height;
+  int image_width;  // Image Width
+  int image_height; // Image Height
   JPEG(string filename)
   {
     file = new FileUtils(filename);
@@ -476,6 +476,7 @@ public:
       exit(1);
     }
   }
+
   void decode()
   {
     while (1)
@@ -503,21 +504,15 @@ public:
         else if (marker->type == MarkerType::DQT)
         {
           read_quantization_table(marker);
-          // quantization_table[0]->display();
-          // quantization_table[1]->display();
-          // return;
         }
         else if (marker->type == MarkerType::SOS)
         {
           read_sos(marker);
-          // read_entropy_image(file);
           break;
         }
-
         else if (marker->type == MarkerType::DRI)
         {
-          show(LogType::WARNING) << "Found DRI marker, ignoring ..." >> cout;
-          show[1] << "Length : " << marker->length >> cout;
+          read_dri(marker);
         }
         else if (marker->type == MarkerType::DRM)
         {
@@ -557,123 +552,159 @@ public:
       }
       delete marker;
     }
-      char current = *file->read(1);
-      char last;
-    while (true) {
+
+    char current = *file->read(1);
+    char last;
+    while (true)
+    {
       last = current;
       current = *file->read(1);
-      // cout << to_hex_string(&last, 1) << " " << to_hex_string(&current, 1) << endl;
-      if (last == '\xff') {
-        if (current == '\xd9') {
+      if (last == '\xff')
+      {
+        if (current == '\xd9')
+        {
           break;
-        } else if (current == '\x00') {
+        }
+        else if (current == '\x00')
+        {
           huffmanData.push_back(last);
           current = *file->read(1);
-        } else if (current >= '\xd0' && current <= '\xd7') {
-          current = *file->read(1);
-        } else if (current == '\xff') {
-          //
         }
-        else {
+        else if (current >= '\xd0' && current <= '\xd7')
+        {
+        }
+        else if (current == '\xff')
+        {
+          // skip
+        }
+        else
+        {
           show(LogType::ERROR) << "Invalid marker, May be an unexpected format occured!(" << to_hex_string(&current, 1) << ")" >> cout;
           return;
         }
-      }else {
+      }
+      else
+      {
         huffmanData.push_back(last);
       }
     }
+
+    for (int i = 0; i < this->numComponents; i++)
+    {
+      // if (this->color_components[i].horizontal_sampling_factor != 1 || this->color_components[i].vertical_sampling_factor != 1)
+      // {
+      //   show(LogType::ERROR) << "Sampling factors other than 1x1 are not supported" >> cout;
+      //   exit(1);
+      // }
+      if (this->quantization_tables[this->color_components[i].quantizationTableID]->set == false)
+      {
+        show(LogType::ERROR) << "Quantization Table not found" >> cout;
+        exit(1);
+      }
+      if (this->huffmanDCTTable[this->color_components[i].huffmanDCTTableID].set == false)
+      {
+        show(LogType::ERROR) << "Huffman DCT Table not found" >> cout;
+        exit(1);
+      }
+      if (this->huffmanACTable[this->color_components[i].huffmanACTableID].set == false)
+      {
+        show(LogType::ERROR) << "Huffman AC Table not found" >> cout;
+        exit(1);
+      }
+    }
+    show[0] << "Image is valid and ready to decode" >> cout;
+    show[1] << "Got Huffman tables DC and AC" >> cout;
+    show[1] << "Got Quantization tables" >> cout;
+    show[1] << "Got Color Components" >> cout;
+    show[1] << "Got Image Size : " << this->image_width << "x" << this->image_height >> cout;
+    show[1] << "Got Restart Interval : " << this->restartInterval >> cout;
+    show[1] << "Got Zero Based : " << this->zeroBased >> cout;
+    show[1] << "Got Number of Components : " << this->numComponents >> cout;
+    show[1] << "Got Huffman Data of size(" << (int)this->huffmanData.size() << ")" >> cout;
+
     MCU *mcus = decodeHuffman();
-    cout <<  mcus[0].y << endl;
+    cout << mcus[0].y << endl;
     string filename = "img.jpg";
     const std::size_t pos = filename.find_last_of('.');
     const std::string outFilename = (pos == std::string::npos) ? (filename + ".bmp") : (filename.substr(0, pos) + ".bmp");
-        
+
     writeBMP(this, mcus, outFilename);
-    cout << "HURAH!!!"  << endl;
+    cout << "HURAH!!!" << endl;
   }
 };
 
-
-
-
 // helper function to write a 4-byte integer in little-endian
-void putInt(std::ofstream& outFile, const int v) {
-    outFile.put((v >>  0) & 0xFF);
-    outFile.put((v >>  8) & 0xFF);
-    outFile.put((v >> 16) & 0xFF);
-    outFile.put((v >> 24) & 0xFF);
+void putInt(std::ofstream &outFile, const int v)
+{
+  outFile.put((v >> 0) & 0xFF);
+  outFile.put((v >> 8) & 0xFF);
+  outFile.put((v >> 16) & 0xFF);
+  outFile.put((v >> 24) & 0xFF);
 }
 
 // helper function to write a 2-byte short integer in little-endian
-void putShort(std::ofstream& outFile, const int v) {
-    outFile.put((v >>  0) & 0xFF);
-    outFile.put((v >>  8) & 0xFF);
+void putShort(std::ofstream &outFile, const int v)
+{
+  outFile.put((v >> 0) & 0xFF);
+  outFile.put((v >> 8) & 0xFF);
 }
 
 // write all the pixels in the MCUs to a BMP file
-void writeBMP(JPEG *image, const MCU* const mcus, const std::string& filename) {
-    cout << "WRITING BMP FILE" << endl;
-    std::ofstream outFile = std::ofstream(filename, std::ios::out | std::ios::binary);
-    if (!outFile.is_open()) {
-        std::cout << "Error - Error opening output file\n";
-        return;
+void writeBMP(JPEG *image, const MCU *const mcus, const std::string &filename)
+{
+  cout << "WRITING BMP FILE" << endl;
+  std::ofstream outFile = std::ofstream(filename, std::ios::out | std::ios::binary);
+  if (!outFile.is_open())
+  {
+    std::cout << "Error - Error opening output file\n";
+    return;
+  }
+
+  const int mcuHeight = (image->image_height + 7) / 8;
+  const int mcuWidth = (image->image_width + 7) / 8;
+  const int paddingSize = (4 - (image->image_width * 3) % 4) % 4;
+  const int size = 14 + 12 + image->image_height * image->image_width * 3 + image->image_height * paddingSize;
+
+  outFile.put('B');
+  outFile.put('M');
+  putInt(outFile, size);
+  putInt(outFile, 0);
+  putInt(outFile, 0x1A);
+  putInt(outFile, 12);
+  putShort(outFile, image->image_width);
+  putShort(outFile, image->image_height);
+  putShort(outFile, 1);
+  putShort(outFile, 24);
+
+  for (int i = image->image_height - 1; i < image->image_height; --i)
+  {
+    const int mcuRow = i / 8;
+    const int pixelRow = i % 8;
+    for (int j = 0; j < image->image_width; ++j)
+    {
+      const int mcuColumn = j / 8;
+      const int pixelColumn = j % 8;
+      const int mcuIndex = mcuRow * mcuWidth + mcuColumn;
+      const int pixelIndex = pixelRow * 8 + pixelColumn;
+      // cout << "HERE" << mcus[mcuIndex].b << " " << pixelIndex << endl;
+      // cout << "DONE 0" << endl;
+      outFile.put(mcus[mcuIndex].y[pixelIndex]);
+      // cout << "DONE 1" << endl;
+      outFile.put(mcus[mcuIndex].cr[pixelIndex]);
+      // cout << "DONE 2" << endl;
+      outFile.put(mcus[mcuIndex].cb[pixelIndex]);
+      // cout << "DONE 3" << endl;
     }
-
-    const int mcuHeight = (image->image_height + 7) / 8;
-    const int mcuWidth = (image->image_width + 7) / 8;
-    const int paddingSize = (4 - (image->image_width * 3) % 4) % 4;
-    const int size = 14 + 12 + image->image_height * image->image_width * 3 + image->image_height * paddingSize;
-
-    outFile.put('B');
-    outFile.put('M');
-    putInt(outFile, size);
-    putInt(outFile, 0);
-    putInt(outFile, 0x1A);
-    putInt(outFile, 12);
-    putShort(outFile, image->image_width);
-    putShort(outFile, image->image_height);
-    putShort(outFile, 1);
-    putShort(outFile, 24);
-
-    for (int i = image->image_height - 1; i < image->image_height; --i) {
-        const int mcuRow = i / 8;
-        const int pixelRow = i % 8;
-        for (int j = 0; j < image->image_width; ++j) {
-            const int mcuColumn = j / 8;
-            const int pixelColumn = j % 8;
-            const int mcuIndex = mcuRow * mcuWidth + mcuColumn;
-            const int pixelIndex = pixelRow * 8 + pixelColumn;
-    cout << "HERE" << mcus[mcuIndex].b << " " << pixelIndex << endl;
-            outFile.put(mcus[mcuIndex].y[pixelIndex]);
-            outFile.put(mcus[mcuIndex].cb[pixelIndex]);
-            outFile.put(mcus[mcuIndex].cr[pixelIndex]);
-        }
-        for (int j = 0; j < paddingSize; ++j) {
-            outFile.put(0);
-        }
+    // cout << "DONE THIS ROW" << endl;
+    for (int j = 0; j < paddingSize; ++j)
+    {
+      outFile.put(0);
     }
-
-    outFile.close();
+    // cout << "DONE THIS ROW 2" << endl;
+  }
+  cout << "DONE";
+  // outFile.close();
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 int main(int argc, char **argv)
 {
