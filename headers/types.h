@@ -41,12 +41,32 @@ struct MCU
   }
 };
 
-struct HuffmanTable
+class HuffmanTable
 {
-  char offset[17] = {0};
+
+public:
+  unsigned char offset[17] = {0};
   char symbols[162] = {0};
-  int codes[162] = {0};
+  unsigned int codes[162] = {0};
   bool set = false;
+  void display()
+  {
+    for (int i = 0; i < 16; i++)
+    {
+      cout << (int)offset[i] << " ";
+    }
+    cout << endl;
+    for (int i = 0; i < 162; i++)
+    {
+      cout << (int)symbols[i] << " ";
+    }
+    cout << endl;
+    for (int i = 0; i < 162; i++)
+    {
+      cout << codes[i] << " ";
+    }
+    cout << endl;
+  }
 };
 
 struct ColorComponent
@@ -72,7 +92,7 @@ class QuantizationTable
 
 public:
   bool set = false;
-  QuantizationTable(int header, char *raw)
+  QuantizationTable(int header, unsigned char *raw)
   {
     for (int i = 0; i < 8; i++)
     {
@@ -122,19 +142,19 @@ class Marker
   int _data_pointer = 0;
 
 public:
-  char *marker;
+  unsigned char *marker;
   int length;
-  char *data;
+  unsigned char *data;
   int type;
   Marker(FileUtils *file)
   {
     this->marker = file->read(1);
-    if (marker[0] == '\x00')
+    if (marker[0] == 0x00)
     {
       this->type = MarkerType::PAD;
       return;
     }
-    int int_marker = hex_to_int(marker, 1);
+    int int_marker = (int) hex_to_int(marker, 1);
     if (int_marker >= 224 && int_marker < 240)
     {
       this->type = MarkerType::META;
@@ -151,31 +171,31 @@ public:
     }
     switch (marker[0])
     {
-    case '\xe0':
+    case MarkerType::APP:
       this->type = MarkerType::APP;
       break;
-    case '\xdb':
+    case MarkerType::DQT:
       this->type = MarkerType::DQT;
       break;
-    case '\xc0':
+    case 0xc0:
       this->type = MarkerType::SOF;
       break;
-    case '\xc2':
+    case 0xc2:
       this->type = MarkerType::SOF;
       break;
-    case '\xc4':
+    case 0xc4:
       this->type = MarkerType::DHT;
       break;
-    case '\xda':
+    case 0xda:
       this->type = MarkerType::SOS;
       break;
-    case '\xd9':
+    case 0xd9:
       this->type = MarkerType::EOI;
       break;
-    case '\xd8':
+    case 0xd8:
       this->type = MarkerType::SOI;
       break;
-    case '\xdd':
+    case 0xdd:
       this->type = MarkerType::DRI;
       break;
     default:
@@ -185,14 +205,14 @@ public:
     this->data = file->read(this->length - 2);
   }
 
-  char *read(int n = 1)
+  unsigned char *read(int n = 1)
   {
     if (_data_pointer + n > length)
     {
       show(LogType::ERROR) << "MARKER READER : Reading of unavailable data" >> cout;
       return nullptr;
     }
-    char *res = new char[n];
+    unsigned char *res = new unsigned char[n];
     for (int i = 0; i < n; i++)
     {
       res[i] = this->data[_data_pointer + i];
