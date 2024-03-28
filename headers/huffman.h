@@ -12,19 +12,19 @@ using namespace std;
 */
 class BitStream
 {
-    unsigned char st;
+    char st;
     int st_c = -1;
     FileUtils *file;
-    vector<unsigned char> *st_v;
-    unsigned int st_v_i = 0;
+    vector<char> *st_v;
+    int st_v_i = 0;
     int size = 0;
 
 public:
-    BitStream(unsigned char st)
+    BitStream(char st)
     {
         this->st = st;
     }
-    BitStream(vector<unsigned char> *st)
+    BitStream(vector<char> *st)
     {
         this->st = st->at(0);
         this->size = st->size();
@@ -52,7 +52,7 @@ public:
             else
                 st = *file->read();
             // if (st == '\xff') {
-            //     unsigned char tmp;
+            //     char tmp;
             //     if (file == nullptr) {
             //         tmp = st_v->at(st_v_i);
             //         st_v_i++;
@@ -72,7 +72,6 @@ public:
         }
         int bit = (st >> st_c) & 1;
         st_c--;
-        // cout << bit << " BIT\n";
         return bit;
     }
 
@@ -106,7 +105,7 @@ public:
 class Node
 {
 public:
-    Node(unsigned char *value, int depth)
+    Node(char *value, int depth)
     {
         this->value = value;
         this->depth = depth;
@@ -124,7 +123,7 @@ public:
     }
     Node() {}
     Node *left = nullptr, *right = nullptr;
-    unsigned char *value = nullptr;
+    char *value = nullptr;
     int length = 0;
     int depth = 0;
     bool leaf = 0;
@@ -156,7 +155,7 @@ public:
     }
 };
 
-bool BitsFromLength(Node *root1, unsigned char *element, int code_length);
+bool BitsFromLength(Node *root1, char *element, int code_length);
 
 class HuffmanTable2
 {
@@ -168,7 +167,7 @@ public:
         this->root = new Node(0);
     }
 
-    void GetHuffmanBits(int *code_lengths, int size, unsigned char *elements[])
+    void GetHuffmanBits(int *code_lengths, int size, char *elements[])
     {
         int k = 0;
         for (int i = 0; i < size; i++)
@@ -252,7 +251,7 @@ public:
         }
         return r;
     }
-    unsigned char *getCode(BitStream *st)
+    char *getCode(BitStream *st)
     {
         Node *res = find(st);
         return res->value;
@@ -278,7 +277,7 @@ public:
     }
 };
 
-bool BitsFromLength(Node *root1, unsigned char *element, int code_length)
+bool BitsFromLength(Node *root1, char *element, int code_length)
 {
     if (root1 == nullptr)
         return false;
@@ -310,7 +309,7 @@ bool BitsFromLength(Node *root1, unsigned char *element, int code_length)
 // {
 //     HuffmanTable table;
 //     int code_lengths[] = {0, 2, 2, 3, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-//     unsigned char* elements[] = {"5","6", "3", "4", "2", "7", "8", "1", "0", "9"};
+//     char* elements[] = {"5","6", "3", "4", "2", "7", "8", "1", "0", "9"};
 //     table.GetHuffmanBits(code_lengths, 16, elements);
 //     table.display();
 //     return 0;

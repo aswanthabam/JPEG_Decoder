@@ -20,7 +20,7 @@ class JPEG
   ColorComponent color_components[3];                // color components
   HuffmanTable huffmanDCTTable[4];                   // Huffman Tables DCT
   HuffmanTable huffmanACTable[4];                    // Huffman Tables AC
-  vector<unsigned char> huffmanData;                          // Huffman Coded Data
+  vector<char> huffmanData;                          // Huffman Coded Data
   int restartInterval = 0;                           // Restart Interval
   bool zeroBased = false;                            // is the componet ids zero based or not
   short int numComponents = 0;                       // Number of components
@@ -34,8 +34,8 @@ class JPEG
   /* Read application headers of a given image */
   void read_application_headers(Marker *marker)
   {
-    unsigned char *identifier = marker->read(5);
-    if (identifier[0] != 'J' || identifier[1] != 'F' || identifier[2] != 'I' || identifier[3] != 'F' || identifier[4] != 0x00)
+    char *identifier = marker->read(5);
+    if (identifier[0] != 'J' || identifier[1] != 'F' || identifier[2] != 'I' || identifier[3] != 'F' || identifier[4] != '\x00')
     {
       show(LogType::ERROR) << "APPLICATION HEADERS : Invalid JPEG file, not JEFI" >> cout;
       exit(1);
@@ -64,7 +64,7 @@ class JPEG
 
   void read_sof(Marker *marker)
   {
-    if (marker->marker[0] == 0xc2)
+    if (marker->marker[0] == '\xc2')
     {
       show(LogType::ERROR) << "SOF : Not supported, Progressive baseline images are not supported" >> cout;
       exit(1);
@@ -100,7 +100,7 @@ class JPEG
         show(LogType::ERROR) << "SOF : Invalid component ID" >> cout;
         exit(1);
       }
-      unsigned char sampling = marker->read()[0];
+      char sampling = marker->read()[0];
       ColorComponent *comp = &this->color_components[i];
       comp->horizontal_sampling_factor = (sampling >> 4);
       comp->vertical_sampling_factor = (sampling & 0x0F);
@@ -148,7 +148,7 @@ class JPEG
     int length = marker->length - 2;
     while (length > 0)
     {
-      unsigned char *tableInfo = marker->read();
+      char *tableInfo = marker->read();
       int tableId = (*tableInfo) & 0x0F;
       bool acTable = (*tableInfo) >> 4;
       if (tableId > 3)
@@ -197,7 +197,7 @@ class JPEG
     int length = marker->length - 2;
     while (length > 0)
     {
-      unsigned char *info = marker->read(1);
+      char *info = marker->read(1);
       length--;
       int tableID = (*info) & 0x0F;
       if (tableID > 3)
@@ -205,13 +205,13 @@ class JPEG
         show(LogType::ERROR) << "Quantization Table : Invalid table ID" >> cout;
         exit(1);
       }
-      unsigned char *arr;
+      char *arr;
       if (*info >> 4 != 0)
       {
-        arr = new unsigned char[64];
+        arr = new char[64];
         for (int i = 0; i < 64; i++)
         {
-          unsigned char raw = (marker->read()[0] << 8) + marker->read()[0];
+          char raw = (marker->read()[0] << 8) + marker->read()[0];
           arr[i] = raw;
         }
         length -= 128;
@@ -240,7 +240,7 @@ class JPEG
     {
       int id = (int)marker->read()[0]; // ID
       ColorComponent *comp = &this->color_components[i];
-      unsigned char huff = marker->read()[0];
+      char huff = marker->read()[0];
       comp->huffmanDCTTableID = huff >> 4;
       comp->huffmanACTableID = huff & 0x0f;
     }
@@ -307,7 +307,7 @@ class JPEG
       code <<= 1;
     }
   }
-  unsigned char getNextSymbol(BitStream *st, const HuffmanTable &table)
+  char getNextSymbol(BitStream *st, const HuffmanTable &table)
   {
     int cur = 0;
     for (int i = 0; i < 16; i++)
@@ -471,8 +471,8 @@ public:
   JPEG(string filename)
   {
     file = new FileUtils(filename);
-    unsigned char *type = file->read(2);
-    if (type[0] != 0xff || type[1] != 0xd8)
+    char *type = file->read(2);
+    if (type[0] != '\xff' || type[1] != '\xd8')
     {
       show(LogType::WARNING) << "ERROR : Not a JPEG file" >> cout;
       exit(1);
@@ -483,8 +483,8 @@ public:
   {
     while (1)
     {
-      unsigned char *marker = file->read(1);
-      if (marker[0] == 0xff)
+      char *marker = file->read(1);
+      if (marker[0] == '\xff')
       {
         Marker *marker = new Marker(file);
         if (marker->type == MarkerType::SOI)
@@ -533,7 +533,7 @@ public:
         }
         else if (marker->type == MarkerType::INVALID)
         {
-          show(LogType::ERROR) << "Invalid marker (" << (char *)to_hex_string(marker->marker, 1) << ", " <<(char*) hex_to_int(marker->marker, 1) << ")" >> cout;
+          show(LogType::ERROR) << "Invalid marker (" << to_hex_string(marker->marker, 1) << ", " << hex_to_int(marker->marker, 1) << ")" >> cout;
           return;
         }
         else if (marker->type == MarkerType::PAD)
@@ -542,46 +542,46 @@ public:
         }
         else
         {
-          show(LogType::ERROR) << "Invalid marker type. Not Implemented (" << (char *)to_hex_string(marker->marker, 1) << ")" >> cout;
+          show(LogType::ERROR) << "Invalid marker type. Not Implemented (" << to_hex_string(marker->marker, 1) << ")" >> cout;
           return;
         }
         delete marker;
       }
       else
       {
-        show(LogType::ERROR) << "Invalid marker, May be an unexpected format occured!(" << (char *)to_hex_string(marker, 1) << ")" >> cout;
+        show(LogType::ERROR) << "Invalid marker, May be an unexpected format occured!(" << to_hex_string(marker, 1) << ")" >> cout;
         return;
       }
       delete marker;
     }
 
-    unsigned char current = *file->read(1);
-    unsigned char last;
+    char current = *file->read(1);
+    char last;
     while (true)
     {
       last = current;
       current = *file->read(1);
-      if (last == 0xff)
+      if (last == '\xff')
       {
-        if (current == 0xd9)
+        if (current == '\xd9')
         {
           break;
         }
-        else if (current == 0x00)
+        else if (current == '\x00')
         {
           huffmanData.push_back(last);
           current = *file->read(1);
         }
-        else if (current >= 0xd0 && current <= 0xd7)
+        else if (current >= '\xd0' && current <= '\xd7')
         {
         }
-        else if (current == 0xff)
+        else if (current == '\xff')
         {
           // skip
         }
         else
         {
-          show(LogType::ERROR) << "Invalid marker, May be an unexpected format occured!(" << (char *)to_hex_string(&current, 1) << ")" >> cout;
+          show(LogType::ERROR) << "Invalid marker, May be an unexpected format occured!(" << to_hex_string(&current, 1) << ")" >> cout;
           return;
         }
       }
