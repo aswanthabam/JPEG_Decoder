@@ -29,10 +29,22 @@ public:
         this->message += to_string(message);
         return *this;
     }
+    Logger operator<<(unsigned int message)
+    {
+
+        this->message += to_string(message);
+        return *this;
+    }
     Logger operator<<(const char *message)
     {
 
         this->message += message;
+        return *this;
+    }
+    Logger operator<<(const unsigned char *message)
+    {
+
+        this->message += (char*) message;
         return *this;
     }
     Logger operator<<(const char message)

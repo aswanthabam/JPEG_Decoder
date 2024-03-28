@@ -534,7 +534,7 @@ public:
         }
         else if (marker->type == MarkerType::INVALID)
         {
-          show(LogType::ERROR) << "Invalid marker (" << (char *)to_hex_string(marker->marker, 1) << ", " << (char *)hex_to_int(marker->marker, 1) << ")" >> cout;
+          show(LogType::ERROR) << "Invalid marker (" << (int) *to_hex_string(marker->marker, 1) << ", " << hex_to_int(marker->marker, 1) << ")" >> cout;
           return;
         }
         else if (marker->type == MarkerType::PAD)
