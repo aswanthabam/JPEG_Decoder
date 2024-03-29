@@ -604,6 +604,7 @@ public:
     std::cout << "Time taken by write bmp function: " << time_taken << " seconds" << std::endl;
     cout << "HURAH!!!" << endl;
   }
+  
 };
 
 // helper function to write a 4-byte integer in little-endian

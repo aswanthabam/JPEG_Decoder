@@ -60,10 +60,14 @@ public:
                 const int pixelColumn = x % 8;
                 const int mcuIndex = mcuRow * this->mcuWidthReal + mcuColumn;
                 const int pixelIndex = pixelRow * 8 + pixelColumn;
-                SDL_Rect rect = {x, y, 1, 1};
+                SDL_Rect rect = {x, this->height - y, 1, 1};
+                // SDL_Rect rect = {;
                 SDL_SetRenderDrawColor(renderer, this->mcus[mcuIndex].y[pixelIndex], this->mcus[mcuIndex].cr[pixelIndex], this->mcus[mcuIndex].cb[pixelIndex], 0xFF); // Red color
+                // SDL_SetRenderDrawColor(renderer, 0xff,0xff,0xff,0xff);
                 SDL_RenderFillRect(renderer, &rect);
+                // break;
             }
+            // break;
         }
 
         // Update screen
