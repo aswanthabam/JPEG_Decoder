@@ -461,7 +461,57 @@ public:
       exit(1);
     }
   }
+  void YCbCrToRGBMCU(MCU &mcu, const MCU &cbcr, const uint v, const uint h)
+  {
+    for (uint y = 7; y < 8; --y)
+    {
+      for (uint x = 7; x < 8; --x)
+      {
+        const uint pixel = y * 8 + x;
+        const uint cbcrPixelRow = y / this->verticalSamplingFactor + 4 * v;
+        const uint cbcrPixelColumn = x / this->horizontalSamplingFactor + 4 * h;
+        const uint cbcrPixel = cbcrPixelRow * 8 + cbcrPixelColumn;
+        int r = mcu.y[pixel] + 1.402f * cbcr.cr[cbcrPixel] + 128;
+        int g = mcu.y[pixel] - 0.344f * cbcr.cb[cbcrPixel] - 0.714f * cbcr.cr[cbcrPixel] + 128;
+        int b = mcu.y[pixel] + 1.772f * cbcr.cb[cbcrPixel] + 128;
+        if (r < 0)
+          r = 0;
+        if (r > 255)
+          r = 255;
+        if (g < 0)
+          g = 0;
+        if (g > 255)
+          g = 255;
+        if (b < 0)
+          b = 0;
+        if (b > 255)
+          b = 255;
+        mcu.r[pixel] = r;
+        mcu.g[pixel] = g;
+        mcu.b[pixel] = b;
+      }
+    }
+  }
 
+  // convert all pixels from YCbCr color space to RGB
+  void YCbCrToRGB(MCU *const mcus)
+  {
+    for (uint y = 0; y < this->mcuHeight; y += this->verticalSamplingFactor)
+    {
+      for (uint x = 0; x < this->mcuWidth; x += this->horizontalSamplingFactor)
+      {
+        const MCU &cbcr = mcus[y * this->mcuWidthReal + x];
+        for (uint v = this->verticalSamplingFactor - 1; v < this->verticalSamplingFactor; --v)
+        {
+          for (uint h = this->horizontalSamplingFactor - 1; h < this->horizontalSamplingFactor; --h)
+          {
+            MCU &mcu = mcus[(y + v) * this->mcuWidthReal + (x + h)];
+            YCbCrToRGBMCU(mcu, cbcr, v, h);
+          }
+        }
+      }
+    }
+  }
   void decode()
   {
     while (1)
@@ -580,7 +630,7 @@ public:
     start = std::chrono::high_resolution_clock::now();
 
     MCU *mcus = decodeHuffman();
-
+    YCbCrToRGB(mcus);
     end = std::chrono::high_resolution_clock::now();
     duration = end - start;
     time_taken = duration.count();
@@ -592,10 +642,10 @@ public:
     const std::string outFilename = (pos == std::string::npos) ? (filename + ".bmp") : (filename.substr(0, pos) + ".bmp");
 
     start = std::chrono::high_resolution_clock::now();
-    // writeBMP(this, mcus, outFilename);
-    Display display(mcus, this->image_width, this->image_height, this->mcuWidth, this->mcuHeight);
+    writeBMP(this, mcus, outFilename);
+    // Display display(mcus, this->image_width, this->image_height, this->mcuWidth, this->mcuHeight);
 
-    display.display();
+    // display.display();
     end = std::chrono::high_resolution_clock::now();
     duration = end - start;
     time_taken = duration.count();
@@ -604,7 +654,6 @@ public:
     std::cout << "Time taken by write bmp function: " << time_taken << " seconds" << std::endl;
     cout << "HURAH!!!" << endl;
   }
-  
 };
 
 // helper function to write a 4-byte integer in little-endian
@@ -658,7 +707,7 @@ void writeBMP(const JPEG *const image, const MCU *const mcus, const std::string 
       const int pixelColumn = x % 8;
       const int mcuIndex = mcuRow * image->mcuWidthReal + mcuColumn;
       const int pixelIndex = pixelRow * 8 + pixelColumn;
-      
+
       outFile.put(mcus[mcuIndex].y[pixelIndex]);
       outFile.put(mcus[mcuIndex].cr[pixelIndex]);
       outFile.put(mcus[mcuIndex].cb[pixelIndex]);
