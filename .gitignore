@@ -3,3 +3,5 @@
 *.bmp
 .vscode
 .idea
+SDL
+SDL2

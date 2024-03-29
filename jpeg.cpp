@@ -5,8 +5,10 @@
 #include <math.h>
 #include <map>
 #include <vector>
+#include <chrono>
 #include "headers/huffman.h"
 #include "headers/types.h"
+#include "headers/file.h"
 
 using namespace logger;
 
@@ -15,7 +17,7 @@ void writeBMP(const JPEG *const image, const MCU *const mcus, const std::string 
 
 class JPEG
 {
-  FileUtils *file;                                   // File object
+  BitStream *file;                                   // File object
   map<int, QuantizationTable *> quantization_tables; // Quantization Tables
   ColorComponent color_components[3];                // color components
   HuffmanTable huffmanDCTTable[4];                   // Huffman Tables DCT
@@ -181,6 +183,7 @@ class JPEG
         table->symbols[i] = marker->read()[0];
       }
       table->set = true;
+      table->generateCodes();
       length -= allSymbols + 17;
     }
     if (length != 0)
@@ -292,25 +295,13 @@ class JPEG
     }
     show[0] << "Restart Interval : " << this->restartInterval >> cout;
   }
-  void generateCodes(HuffmanTable &table)
-  {
-    int code = 0;
-    for (int i = 0; i < 16; i++)
-    {
-      for (int j = table.offset[i]; j < table.offset[i + 1]; j++)
-      {
-        table.codes[j] = code;
-        code++;
-      }
-      code <<= 1;
-    }
-  }
-  unsigned char getNextSymbol(BitStream *st, const HuffmanTable &table)
+
+  unsigned char getNextSymbol(const HuffmanTable &table)
   {
     int cur = 0;
     for (int i = 0; i < 16; i++)
     {
-      int bit = st->getBit();
+      int bit = this->file->getBit();
       if (bit == -1)
       {
         return -1;
@@ -326,11 +317,9 @@ class JPEG
     }
     return -1;
   }
-  bool decodeMCUComponent(BitStream *st, int *const component, int &previousDC, HuffmanTable &dcTable, HuffmanTable &acTable)
+  bool decodeMCUComponent(int *const component, int &previousDC, HuffmanTable &dcTable, HuffmanTable &acTable)
   {
-    // acTable.display();
-    // return true;
-    int length = getNextSymbol(st, dcTable);
+    int length = getNextSymbol(dcTable);
     if (length == -1)
     {
       show(LogType::ERROR) << "Invalid DC symbol (hmm)" >> cout;
@@ -341,7 +330,7 @@ class JPEG
       show(LogType::ERROR) << "Invalid DC length" >> cout;
       exit(1);
     }
-    int coeff = st->getBitN(length);
+    int coeff = this->file->getBitN(length);
     if (coeff == -1)
     {
       show(LogType::ERROR) << "Invalid DC coefficient" >> cout;
@@ -355,7 +344,7 @@ class JPEG
     int i = 1;
     while (i < 64)
     {
-      int symbol = getNextSymbol(st, acTable);
+      int symbol = getNextSymbol(acTable);
       if (symbol == -1)
       {
         show(LogType::ERROR) << "Invalid AC symbol" >> cout;
@@ -395,7 +384,7 @@ class JPEG
       }
       if (coeffLength != 0)
       {
-        coeff = st->getBitN(coeffLength);
+        coeff = this->file->getBitN(coeffLength);
         if (coeff == -1)
         {
           show(LogType::ERROR) << "Invalid AC coefficient" >> cout;
@@ -420,14 +409,6 @@ class JPEG
       show(LogType::ERROR) << "Memory allocation failed" >> cout;
       exit(1);
     }
-    for (int i = 0; i < 4; i++)
-    {
-      if (this->huffmanDCTTable[i].set)
-        generateCodes(this->huffmanDCTTable[i]);
-      if (this->huffmanACTable[i].set)
-        generateCodes(huffmanACTable[i]);
-    }
-    BitStream *st = new BitStream(&this->huffmanData);
     int previousDC[3] = {0, 0, 0};
     int restartInterval = this->restartInterval * this->horizontalSamplingFactor * this->verticalSamplingFactor;
     for (int y = 0; y < this->mcuHeight; y += this->verticalSamplingFactor)
@@ -439,7 +420,7 @@ class JPEG
           previousDC[0] = 0;
           previousDC[1] = 0;
           previousDC[2] = 0;
-          st->align();
+          this->file->align();
         }
         for (int i = 0; i < this->numComponents; ++i)
         {
@@ -447,7 +428,7 @@ class JPEG
           {
             for (int h = 0; h < this->color_components[i].horizontal_sampling_factor; ++h)
             {
-              if (!decodeMCUComponent(st, mcus[(y + v) * this->mcuWidthReal + (x + h)][i],
+              if (!decodeMCUComponent(mcus[(y + v) * this->mcuWidthReal + (x + h)][i],
                                       previousDC[i],
                                       this->huffmanDCTTable[this->color_components[i].huffmanDCTTableID],
                                       this->huffmanACTable[this->color_components[i].huffmanACTableID]))
@@ -471,7 +452,7 @@ public:
 
   JPEG(string filename)
   {
-    file = new FileUtils(filename);
+    file = new BitStream(filename);
     unsigned char *type = file->read(2);
     if (type[0] != 0xff || type[1] != 0xd8)
     {
@@ -534,7 +515,7 @@ public:
         }
         else if (marker->type == MarkerType::INVALID)
         {
-          show(LogType::ERROR) << "Invalid marker (" << (int) *to_hex_string(marker->marker, 1) << ", " << hex_to_int(marker->marker, 1) << ")" >> cout;
+          show(LogType::ERROR) << "Invalid marker (" << (int)*to_hex_string(marker->marker, 1) << ", " << hex_to_int(marker->marker, 1) << ")" >> cout;
           return;
         }
         else if (marker->type == MarkerType::PAD)
@@ -556,50 +537,19 @@ public:
       delete marker;
     }
 
-    unsigned char current = *file->read(1);
-    unsigned char last;
-    while (true)
-    {
-      last = current;
-      current = *file->read(1);
-      if (last == 0xff)
-      {
-        if (current == 0xd9)
-        {
-          break;
-        }
-        else if (current == 0x00)
-        {
-          huffmanData.push_back(last);
-          current = *file->read(1);
-        }
-        else if (current >= 0xd0 && current <= 0xd7)
-        {
-          current = *file->read(1);
-        }
-        else if (current == 0xff)
-        {
-          // skip
-        }
-        else
-        {
-          show(LogType::ERROR) << "Invalid marker, May be an unexpected format occured!(" << (char *)to_hex_string(&current, 1) << ")" >> cout;
-          return;
-        }
-      }
-      else
-      {
-        huffmanData.push_back(last);
-      }
-    }
+    auto start = std::chrono::high_resolution_clock::now();
+
+    file->readImageData();
+
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration = end - start;
+    double time_taken = duration.count();
+
+    // Output the time taken
+    std::cout << "Time taken by function: " << time_taken << " seconds" << std::endl;
 
     for (int i = 0; i < this->numComponents; i++)
     {
-      // if (this->color_components[i].horizontal_sampling_factor != 1 || this->color_components[i].vertical_sampling_factor != 1)
-      // {
-      //   show(LogType::ERROR) << "Sampling factors other than 1x1 are not supported" >> cout;
-      //   exit(1);
-      // }
       if (this->quantization_tables[this->color_components[i].quantizationTableID]->set == false)
       {
         show(LogType::ERROR) << "Quantization Table not found" >> cout;
@@ -624,15 +574,31 @@ public:
     show[1] << "Got Restart Interval : " << this->restartInterval >> cout;
     show[1] << "Got Zero Based : " << this->zeroBased >> cout;
     show[1] << "Got Number of Components : " << this->numComponents >> cout;
-    show[1] << "Got Huffman Data of size(" << (int)this->huffmanData.size() << ")" >> cout;
+    show[1] << "Got Huffman Data of size(" << (int)file->size << ")" >> cout;
+
+    start = std::chrono::high_resolution_clock::now();
 
     MCU *mcus = decodeHuffman();
+
+    end = std::chrono::high_resolution_clock::now();
+    duration = end - start;
+    time_taken = duration.count();
+    std::cout << "Time taken by huffman decode function: " << time_taken << " seconds" << std::endl;
+
     cout << mcus[0].y << endl;
     string filename = "img.jpg";
     const std::size_t pos = filename.find_last_of('.');
     const std::string outFilename = (pos == std::string::npos) ? (filename + ".bmp") : (filename.substr(0, pos) + ".bmp");
 
+    start = std::chrono::high_resolution_clock::now();
     writeBMP(this, mcus, outFilename);
+
+    end = std::chrono::high_resolution_clock::now();
+    duration = end - start;
+    time_taken = duration.count();
+
+    // Output the time taken
+    std::cout << "Time taken by write bmp function: " << time_taken << " seconds" << std::endl;
     cout << "HURAH!!!" << endl;
   }
 };
@@ -678,7 +644,7 @@ void writeBMP(const JPEG *const image, const MCU *const mcus, const std::string 
   putShort(outFile, 1);
   putShort(outFile, 24);
 
-  for (int y = image->image_height - 1; y < image->image_height; --y)
+  for (int y = image->image_height - 1; y >= 0; --y)
   {
     const int mcuRow = y / 8;
     const int pixelRow = y % 8;
@@ -688,6 +654,10 @@ void writeBMP(const JPEG *const image, const MCU *const mcus, const std::string 
       const int pixelColumn = x % 8;
       const int mcuIndex = mcuRow * image->mcuWidthReal + mcuColumn;
       const int pixelIndex = pixelRow * 8 + pixelColumn;
+      if (pixelIndex < 0)
+      {
+        cout << "Pixel Index : " << pixelIndex << " " << pixelRow << " " << pixelColumn << endl;
+      }
       outFile.put(mcus[mcuIndex].y[pixelIndex]);
       outFile.put(mcus[mcuIndex].cr[pixelIndex]);
       outFile.put(mcus[mcuIndex].cb[pixelIndex]);
