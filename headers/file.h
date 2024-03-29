@@ -14,9 +14,4 @@ public:
     file->read((char *) this->buffer,size * sizeof(char));
     return (unsigned char*) this->buffer;
   }
-  byte* readByte(int size = 1) {
-    byte *buffer = new byte[size]();
-    file->read(( char*)buffer,size * sizeof(byte));
-    return buffer;
-  }
 };

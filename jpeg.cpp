@@ -5,8 +5,10 @@
 #include <math.h>
 #include <map>
 #include <vector>
+#include "headers/stream.h"
 #include "headers/huffman.h"
 #include "headers/types.h"
+#include "headers/utils.h"
 
 using namespace logger;
 
@@ -29,7 +31,6 @@ class JPEG
   int horizontalSamplingFactor = 0;                  // Horizontal Sampling Factor
   int verticalSamplingFactor = 0;                    // Vertical Sampling Factor
 
-  /* Read application headers of a given image */
   void read_application_headers(Marker *marker)
   {
     unsigned char *identifier = marker->read(5);
