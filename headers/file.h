@@ -1,6 +1,6 @@
 #include <iostream>
 #include <fstream>
-// #include "logger.h"
+#include "logger.h"
 #include "utils.h"
 
 using namespace std;

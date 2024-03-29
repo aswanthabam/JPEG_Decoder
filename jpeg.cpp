@@ -7,8 +7,9 @@
 #include <vector>
 #include <chrono>
 #include "headers/huffman.h"
-#include "headers/types.h"
+// #include "headers/types.h"
 #include "headers/file.h"
+#include "headers/display.h"
 
 using namespace logger;
 
@@ -591,8 +592,10 @@ public:
     const std::string outFilename = (pos == std::string::npos) ? (filename + ".bmp") : (filename.substr(0, pos) + ".bmp");
 
     start = std::chrono::high_resolution_clock::now();
-    writeBMP(this, mcus, outFilename);
+    // writeBMP(this, mcus, outFilename);
+    Display display(mcus, this->image_width, this->image_height, this->mcuWidth, this->mcuHeight);
 
+    display.display();
     end = std::chrono::high_resolution_clock::now();
     duration = end - start;
     time_taken = duration.count();
@@ -654,10 +657,7 @@ void writeBMP(const JPEG *const image, const MCU *const mcus, const std::string 
       const int pixelColumn = x % 8;
       const int mcuIndex = mcuRow * image->mcuWidthReal + mcuColumn;
       const int pixelIndex = pixelRow * 8 + pixelColumn;
-      if (pixelIndex < 0)
-      {
-        cout << "Pixel Index : " << pixelIndex << " " << pixelRow << " " << pixelColumn << endl;
-      }
+      
       outFile.put(mcus[mcuIndex].y[pixelIndex]);
       outFile.put(mcus[mcuIndex].cr[pixelIndex]);
       outFile.put(mcus[mcuIndex].cb[pixelIndex]);

@@ -1,8 +1,8 @@
 #include "constants.h"
-#include "logger.h"
+// #include "logger.h"
 #include "idct.h"
 
-using namespace logger;
+// using namespace logger;
 
 struct MCU
 {
