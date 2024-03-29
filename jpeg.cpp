@@ -642,10 +642,10 @@ public:
     const std::string outFilename = (pos == std::string::npos) ? (filename + ".bmp") : (filename.substr(0, pos) + ".bmp");
 
     start = std::chrono::high_resolution_clock::now();
-    writeBMP(this, mcus, outFilename);
-    // Display display(mcus, this->image_width, this->image_height, this->mcuWidth, this->mcuHeight);
+    // writeBMP(this, mcus, outFilename);
+    Display display(mcus, this->image_width, this->image_height, this->mcuWidth, this->mcuHeight);
 
-    // display.display();
+    display.display();
     end = std::chrono::high_resolution_clock::now();
     duration = end - start;
     time_taken = duration.count();
