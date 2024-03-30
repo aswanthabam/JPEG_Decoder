@@ -68,7 +68,6 @@ public:
     }
     Logger operator>>(ostream &out)
     {
-        return Logger();
         for (int i = 0; i < level; i++)
             out << "\t";
         if (type == LogType::INFO)

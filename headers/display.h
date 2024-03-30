@@ -1,87 +1,89 @@
-#include <SDL2/SDL.h>
-#include <iostream>
+#include <X11/Xlib.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include "types.h"
-// #include "logger.h"
 
-const int SCREEN_WIDTH = 640;
-const int SCREEN_HEIGHT = 480;
 
-class Display
+void displayImage(MCU *image_data, unsigned int width, unsigned int height, unsigned int mcuWidth, unsigned int mcuHeight, int mcuWidthReal)
 {
-    MCU *mcus;
-    unsigned int width;
-    unsigned int height;
-    unsigned int mcuWidthReal;
-    unsigned int mcuHeightReal;
-    SDL_Window *window;
-    SDL_Renderer *renderer;
+    Display *display;
+    Window window;
+    XEvent event;
+    GC gc;
+    int screen;
 
-public:
-    Display(MCU *mcus, unsigned int width, unsigned int height, unsigned mcuWidthReal, unsigned mcuHeightReal)
+    // Open a connection to the X server
+    display = XOpenDisplay(NULL);
+    if (display == NULL)
     {
-        this->mcus = mcus;
-        this->height = height;
-        this->width = width;
-        this->mcuHeightReal = mcuHeightReal;
-        this->mcuWidthReal = mcuWidthReal;
-        // Initialize SDL with video support
-        if (SDL_Init(SDL_INIT_VIDEO) < 0)
-        {
-            std::cerr << "SDL could not initialize! SDL_Error: " << SDL_GetError() << std::endl;
-            return;
-        }
-
-        // Create window
-        this->window = SDL_CreateWindow("SDL Window", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, this->width, this->height, SDL_WINDOW_SHOWN);
-        if (window == nullptr)
-        {
-            std::cerr << "Window could not be created! SDL_Error: " << SDL_GetError() << std::endl;
-            return;
-        }
-
-        // Create renderer
-        this->renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-        if (renderer == nullptr)
-        {
-            std::cerr << "Renderer could not be created! SDL_Error: " << SDL_GetError() << std::endl;
-            return;
-        }
+        fprintf(stderr, "Cannot open display\n");
+        exit(1);
     }
 
-    void display()
+    screen = DefaultScreen(display);
+
+    // Create a window
+    window = XCreateSimpleWindow(display, RootWindow(display, screen), 0, 0, width, height, 0, BlackPixel(display, screen), WhitePixel(display, screen));
+
+    // Select events to listen for
+    XSelectInput(display, window, ExposureMask | KeyPressMask);
+
+    // Map the window to the screen
+    XMapWindow(display, window);
+
+    // Create a graphical context
+    gc = XCreateGC(display, window, 0, NULL);
+
+    // Main event loop
+    while (1)
     {
-        for (int y = this->height -1; y >=0; --y)
+        XNextEvent(display, &event);
+
+        if (event.type == Expose)
         {
-            const int mcuRow = y / 8;
-            const int pixelRow = y % 8;
-            for (int x = 0; x < this->width; x++)
+            for (int y = height - 1; y >= 0; --y)
             {
-                const int mcuColumn = x / 8;
-                const int pixelColumn = x % 8;
-                const int mcuIndex = mcuRow * this->mcuWidthReal + mcuColumn;
-                const int pixelIndex = pixelRow * 8 + pixelColumn;
-                SDL_Rect rect = {x, (this->height - y), SCREEN_WIDTH / this->width, SCREEN_HEIGHT / this->height};
-                // SDL_Rect rect = {;
-                SDL_SetRenderDrawColor(renderer, this->mcus[mcuIndex].y[pixelIndex], this->mcus[mcuIndex].cr[pixelIndex], this->mcus[mcuIndex].cb[pixelIndex], 0xFF); // Red color
-                // SDL_SetRenderDrawColor(renderer, 0xff,0xff,0xff,0xff);
-                SDL_RenderFillRect(renderer, &rect);
-                // break;
+                const int mcuRow = y / 8;
+                const int pixelRow = y % 8;
+                for (int x = 0; x < width; ++x)
+                {
+                    const int mcuColumn = x / 8;
+                    const int pixelColumn = x % 8;
+                    const int mcuIndex = mcuRow * mcuWidthReal + mcuColumn;
+                    const int pixelIndex = pixelRow * 8 + pixelColumn;
+
+                    // Assuming each MCU contains RGB values
+                    int red = image_data[mcuIndex].r[pixelIndex];
+                    int green = image_data[mcuIndex].g[pixelIndex];
+                    int blue = image_data[mcuIndex].b[pixelIndex];
+                    // int green = image_data[y * width + x].g[0];
+                    // int blue = image_data[y * width + x].b[0];
+
+                    // Convert RGB values to XColor format (You may need to adjust this part)
+                    XColor color;
+                    color.red = red * 256;
+                    color.green = green * 256;
+                    color.blue = blue * 256;
+                    XAllocColor(display, DefaultColormap(display, screen), &color);
+
+                    // Set the pixel color and draw a point
+                    XSetForeground(display, gc, color.pixel);
+                    XDrawPoint(display, window, gc, x, y);
+                }
             }
-            // break;
+            XFlush(display);
         }
 
-        // Update screen
-        SDL_RenderPresent(renderer);
-
-        // Wait for 5 seconds
-        SDL_Delay(5000);
+        if (event.type == KeyPress)
+        {
+            break;
+        }
     }
-    void dispose()
-    {
 
-        // Destroy window and quit SDL
-        SDL_DestroyRenderer(this->renderer);
-        SDL_DestroyWindow(this->window);
-        SDL_Quit();
-    }
-};
+    // Clean up resources
+    XFreeGC(display, gc);
+    XDestroyWindow(display, window);
+    XCloseDisplay(display);
+
+    free(image_data); // Free image data memory
+}
