@@ -6,9 +6,9 @@
 #include <map>
 #include <vector>
 #include <chrono>
-#include "headers/huffman.hpp"
-#include "headers/file.hpp"
-#include "headers/display.hpp"
+#include "include/huffman.hpp"
+#include "include/file.hpp"
+#include "include/display.hpp"
 // #include "headers/types.h"
 
 using namespace logger;
