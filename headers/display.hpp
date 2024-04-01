@@ -12,7 +12,7 @@ int screen;
 bool shouldExit = false;
 std::vector<std::thread> threads;
 
-void drawImage(MCU *image_data, unsigned int _width, unsigned int _height, unsigned int mcuWidth, unsigned int mcuHeight, int mcuWidthReal, int width_y)
+void drawImage(MCU *image_data, unsigned int _width, unsigned int _height, unsigned int mcuWidth, int mcuWidthReal, int width_y)
 {
     for (int y = _height - 1; y >= 0; --y)
     {
@@ -70,14 +70,15 @@ bool displayImage(MCU *image_data, unsigned int width, unsigned int height, unsi
     gc = XCreateGC(display, window, 0, NULL);
     Atom wmDeleteMessage = XInternAtom(display, "WM_DELETE_WINDOW", False);
     XSetWMProtocols(display, window, &wmDeleteMessage, 1);
+
     int t_count = 1; // increase this to increase the number of threads
     for (int i = 0; i < t_count; i++)
     {
         unsigned int _width = (width / t_count) * (i + 1) + (width % t_count);
         unsigned int _height = height;
         unsigned int _width_offset = (width / t_count * i) + (i != 0 ? (width % t_count) : 0);
-        threads.emplace_back([image_data, _width, _height, mcuWidth, mcuHeight, mcuWidthReal, _width_offset]()
-                             { drawImage(image_data, _width, _height, mcuWidth, mcuHeight, mcuWidthReal, _width_offset); });
+        threads.emplace_back([image_data, _width, _height, mcuWidth, mcuWidthReal, _width_offset]()
+                             { drawImage(image_data, _width, _height, mcuWidth, mcuWidthReal, _width_offset); });
     }
 
     while (1)
@@ -87,8 +88,8 @@ bool displayImage(MCU *image_data, unsigned int width, unsigned int height, unsi
 
         if (event.type == Expose)
         {
-            // drawImage(image_data, width, height, mcuWidth, mcuHeight, mcuWidthReal, 0);
-            cout << "DISPLAY :: Image Drawn!" << endl;
+            // DrawImage() is already called by threads
+            printf("DISPLAY :: Image Drawn!\n");
         }
 
         if (event.type == KeyPress)
@@ -102,6 +103,10 @@ bool displayImage(MCU *image_data, unsigned int width, unsigned int height, unsi
             {
                 std::cout << "DISPLAY :: Closing window!" << std::endl;
                 shouldExit = true;
+                for (auto &thread : threads)
+                {
+                    thread.join();
+                }
                 break;
             }
         }
