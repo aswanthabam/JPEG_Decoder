@@ -8,10 +8,10 @@ Project Aimed for practicing JPEG Compression Algorithm. In this we use c++ for 
 - [x] Read Image Headers including Huffman Tables, Quantization Table and other image details.
 - [x] Decode huffman coded data and convert into MCUs
 - [x] Convert into bmp file with YCbCr
-- [ ] Apply Inverse Quantization
-- [ ] Apply Inverse DCT
-- [ ] Apply YCbCr to RGB Convertion
-- [ ] Display image
+- [X] Apply Inverse Quantization
+- [X] Apply Inverse DCT
+- [X] Apply YCbCr to RGB Convertion
+- [X] Display image
 
 ## Requirements
 
@@ -29,3 +29,5 @@ Project Aimed for practicing JPEG Compression Algorithm. In this we use c++ for 
 g++ jpeg.cpp -lX11
 ./a.out <image_path>
 ```
+
+> NB : Example images are available in `/images` folder.
