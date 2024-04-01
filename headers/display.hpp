@@ -7,9 +7,10 @@
 
 Display *display;
 Window window;
-XEvent event;
 GC gc;
 int screen;
+bool shouldExit = false;
+std::vector<std::thread> threads;
 
 void drawImage(MCU *image_data, unsigned int _width, unsigned int _height, unsigned int mcuWidth, unsigned int mcuHeight, int mcuWidthReal, int width_y)
 {
@@ -19,6 +20,10 @@ void drawImage(MCU *image_data, unsigned int _width, unsigned int _height, unsig
         const int pixelRow = y % 8;
         for (int x = width_y; x < _width; ++x)
         {
+            if (shouldExit)
+            {
+                return;
+            }
             const int mcuColumn = x / 8;
             const int pixelColumn = x % 8;
             const int mcuIndex = mcuRow * mcuWidthReal + mcuColumn;
@@ -65,7 +70,6 @@ bool displayImage(MCU *image_data, unsigned int width, unsigned int height, unsi
     gc = XCreateGC(display, window, 0, NULL);
     Atom wmDeleteMessage = XInternAtom(display, "WM_DELETE_WINDOW", False);
     XSetWMProtocols(display, window, &wmDeleteMessage, 1);
-    std::vector<std::thread> threads;
     int t_count = 1; // increase this to increase the number of threads
     for (int i = 0; i < t_count; i++)
     {
@@ -75,11 +79,10 @@ bool displayImage(MCU *image_data, unsigned int width, unsigned int height, unsi
         threads.emplace_back([image_data, _width, _height, mcuWidth, mcuHeight, mcuWidthReal, _width_offset]()
                              { drawImage(image_data, _width, _height, mcuWidth, mcuHeight, mcuWidthReal, _width_offset); });
     }
-    //  for (auto& thread : threads) {
-    //     thread.join();
-    // }
+
     while (1)
     {
+        XEvent event;
         XNextEvent(display, &event);
 
         if (event.type == Expose)
@@ -98,6 +101,7 @@ bool displayImage(MCU *image_data, unsigned int width, unsigned int height, unsi
             if (event.xclient.data.l[0] == static_cast<long>(wmDeleteMessage))
             {
                 std::cout << "DISPLAY :: Closing window!" << std::endl;
+                shouldExit = true;
                 break;
             }
         }
@@ -106,7 +110,6 @@ bool displayImage(MCU *image_data, unsigned int width, unsigned int height, unsi
     XFreeGC(display, gc);
     XDestroyWindow(display, window);
     XCloseDisplay(display);
-
     free(image_data);
     return true;
 }
