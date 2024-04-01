@@ -1,3 +1,5 @@
+#include <math.h>
+#include <iostream>
 // IDCT constants
 
 const float m0 = 2.0 * std::cos(1.0 / 16.0 * 2.0 * M_PI);
@@ -92,16 +94,17 @@ public:
   {
     return table[index];
   }
+
   void display()
   {
     for (int i = 0; i < 8; i++)
     {
-      cout << "\t";
+      std::cout << "\t";
       for (int j = 0; j < 8; j++)
       {
-        cout << table[i * 8 + j] << " ";
+        std::cout << table[i * 8 + j] << " ";
       }
-      cout << endl;
+      std::cout << std::endl;
     }
   }
 };

@@ -1,7 +1,8 @@
 #include <iostream>
 #include <fstream>
-#include "logger.h"
-#include "utils.h"
+#include <vector>
+#include "logger.hpp"
+#include "utils.hpp"
 
 using namespace std;
 using namespace logger;
@@ -16,10 +17,12 @@ class JPEGFile
 public:
     unsigned int size = 0;
     ifstream *file;
+
     JPEGFile(string filename)
     {
         file = new ifstream(filename);
     }
+
     unsigned char *read(int n = 1)
     {
         this->buffer = new char[n]();
@@ -43,14 +46,16 @@ public:
                     this->buffer[i] = this->clean_data->at(this->read_index);
                     this->read_index++;
                 }
-                return (unsigned char *) this->buffer;
+                return (unsigned char *)this->buffer;
             }
         }
     }
+
     void seek(int pos)
     {
         file->seekg(pos, ios::cur);
     }
+
     void readImageData()
     {
         if (this->is_read)
@@ -103,6 +108,10 @@ public:
         return file->eof();
     }
 
+    void close() {
+        file->close();
+    }
+
     ~JPEGFile()
     {
         delete this->file;
@@ -117,7 +126,7 @@ class BitStream : public JPEGFile
 
 public:
     BitStream(string filename) : JPEGFile(filename) {}
-    
+
     int getBit()
     {
 
@@ -174,69 +183,78 @@ enum MarkerType
 class Marker
 {
     int _data_pointer = 0;
-
+    JPEGFile *file;
 public:
-    unsigned char *marker;
+    unsigned char marker;
     int length;
     unsigned char *data;
     int type;
     Marker(JPEGFile *file)
     {
-        this->marker = file->read(1);
-        if (marker[0] == 0x00)
+        this->file = file;
+        this->marker = file->read(1)[0];
+        if (marker == 0x00)
         {
             this->type = MarkerType::PAD;
             return;
         }
-        int int_marker = (int)hex_to_int(marker, 1);
-        if (int_marker >= 224 && int_marker < 240)
+        else if (marker >= 224 && marker < 240)
         {
             this->type = MarkerType::META;
             this->length = (file->read()[0] << 8) + file->read()[0];
             this->data = file->read(this->length - 2);
             return;
         }
-        if (int_marker >= 0xd0 && int_marker < 0xd8)
+        else if (marker >= 0xd0 && marker < 0xd8)
         {
             this->type = MarkerType::DRM;
-            this->length = int_marker - 0xd0;
-            // this->data = file->read(this->length - 2);
+            this->length = marker - 0xd0;
             return;
         }
-        switch (marker[0])
-        {
-        case MarkerType::APP:
-            this->type = MarkerType::APP;
-            break;
-        case MarkerType::DQT:
-            this->type = MarkerType::DQT;
-            break;
-        case 0xc0:
-            this->type = MarkerType::SOF;
-            break;
-        case 0xc2:
-            this->type = MarkerType::SOF;
-            break;
-        case 0xc4:
-            this->type = MarkerType::DHT;
-            break;
-        case 0xda:
+        else if (marker == 0xda) {
             this->type = MarkerType::SOS;
-            break;
-        case 0xd9:
-            this->type = MarkerType::EOI;
-            break;
-        case 0xd8:
-            this->type = MarkerType::SOI;
-            break;
-        case 0xdd:
-            this->type = MarkerType::DRI;
-            break;
-        default:
-            this->type = MarkerType::INVALID;
+            this->length = (file->read()[0] << 8) + file->read()[0];
+            this->data = file->read(this->length - 2);
+            this->file->readImageData();
+            return;
         }
-        this->length = (file->file->get() << 8) + file->file->get();
-        this->data = file->read(this->length - 2);
+        else
+        {
+            switch (marker)
+            {
+            case MarkerType::APP:
+                this->type = MarkerType::APP;
+                break;
+            case MarkerType::DQT:
+                this->type = MarkerType::DQT;
+                break;
+            case 0xc0:
+                this->type = MarkerType::SOF;
+                break;
+            case 0xc2:
+                this->type = MarkerType::SOF;
+                break;
+            case 0xc4:
+                this->type = MarkerType::DHT;
+                break;
+            // case 0xda:
+            //     this->type = MarkerType::SOS;
+            //     break;
+            case 0xd9:
+                this->type = MarkerType::EOI;
+                break;
+            case 0xd8:
+                this->type = MarkerType::SOI;
+                break;
+            case 0xdd:
+                this->type = MarkerType::DRI;
+                break;
+            default:
+                this->type = MarkerType::INVALID;
+            }
+            this->length = (file->file->get() << 8) + file->file->get();
+            this->data = file->read(this->length - 2);
+        }
     }
 
     unsigned char *read(int n = 1)

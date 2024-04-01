@@ -6,17 +6,17 @@
 #include <map>
 #include <vector>
 #include <chrono>
-#include "headers/huffman.h"
-#include "headers/file.h"
-#include "headers/display.h"
+#include "headers/huffman.hpp"
+#include "headers/file.hpp"
+#include "headers/display.hpp"
 // #include "headers/types.h"
 
 using namespace logger;
 
-class JPEG;
-void writeBMP(const JPEG *const image, const MCU *const mcus, const std::string &filename);
+class Image;
+void writeBMP(const Image *const image, const MCU *const mcus, const std::string &filename);
 
-class JPEG
+class Image
 {
   BitStream *file;                                   // File object
   map<int, QuantizationTable *> quantization_tables; // Quantization Tables
@@ -31,6 +31,7 @@ class JPEG
   int mcuHeight = 0;                                 // MCU Height
   int horizontalSamplingFactor = 0;                  // Horizontal Sampling Factor
   int verticalSamplingFactor = 0;                    // Vertical Sampling Factor
+  MCU *mcus = nullptr;                               // MCU array
 
   /* Read application headers of a given image */
   void read_application_headers(Marker *marker)
@@ -65,7 +66,7 @@ class JPEG
 
   void read_sof(Marker *marker)
   {
-    if (marker->marker[0] == 0xc2)
+    if (marker->marker == 0xc2)
     {
       show(LogType::ERROR) << "SOF : Not supported, Progressive baseline images are not supported" >> cout;
       exit(1);
@@ -178,7 +179,6 @@ class JPEG
         show(LogType::ERROR) << "Huffman Table : Invalid number of symbols" >> cout;
         exit(1);
       }
-      // cout << "ALL SYMBOLS : " << allSymbols << endl;
       for (int i = 0; i < allSymbols; i++)
       {
         table->symbols[i] = marker->read()[0];
@@ -318,6 +318,7 @@ class JPEG
     }
     return -1;
   }
+
   bool decodeMCUComponent(int *const component, int &previousDC, HuffmanTable &dcTable, HuffmanTable &acTable)
   {
     int length = getNextSymbol(dcTable);
@@ -363,14 +364,13 @@ class JPEG
       int numZeros = symbol >> 4;
       int coeffLength = symbol & 0x0F;
       coeff = 0;
-      // cout << i << " 0s " << numZeros << " len " << coeffLength << endl;
+
       if (symbol == 0xf0)
       {
         numZeros = 16;
       }
       if (i + numZeros >= 64)
       {
-        cout << i << " " << numZeros << endl;
         show(LogType::ERROR) << "Invalid AC length" >> cout;
         exit(1);
       }
@@ -445,22 +445,69 @@ class JPEG
     return mcus;
   }
 
-public:
-  int image_width;       // Image Width
-  int image_height;      // Image Height
-  int mcuWidthReal = 0;  // MCU Width Real
-  int mcuHeightReal = 0; // MCU Height Real
-
-  JPEG(string filename)
+  void putInt(std::ofstream &outFile, const int v)
   {
-    file = new BitStream(filename);
-    unsigned char *type = file->read(2);
-    if (type[0] != 0xff || type[1] != 0xd8)
-    {
-      show(LogType::WARNING) << "ERROR : Not a JPEG file" >> cout;
-      exit(1);
-    }
+    outFile.put((v >> 0) & 0xFF);
+    outFile.put((v >> 8) & 0xFF);
+    outFile.put((v >> 16) & 0xFF);
+    outFile.put((v >> 24) & 0xFF);
   }
+
+  void putShort(std::ofstream &outFile, const int v)
+  {
+    outFile.put((v >> 0) & 0xFF);
+    outFile.put((v >> 8) & 0xFF);
+  }
+
+  bool writeBMP(const std::string &filename)
+  {
+
+    std::ofstream outFile = std::ofstream(filename, std::ios::out | std::ios::binary);
+    if (!outFile.is_open())
+    {
+      show(LogType::ERROR) << "Error opening output file" >> cout;
+      return false;
+    }
+
+    const int paddingSize = this->image_width % 4;
+    const int size = 14 + 12 + this->image_height * this->image_width * 3 + paddingSize * this->image_height;
+
+    outFile.put('B');
+    outFile.put('M');
+    putInt(outFile, size);
+    putInt(outFile, 0);
+    putInt(outFile, 0x1A);
+    putInt(outFile, 12);
+    putShort(outFile, this->image_width);
+    putShort(outFile, this->image_height);
+    putShort(outFile, 1);
+    putShort(outFile, 24);
+
+    for (int y = this->image_height - 1; y >= 0; --y)
+    {
+      const int mcuRow = y / 8;
+      const int pixelRow = y % 8;
+      for (int x = 0; x < this->image_width; ++x)
+      {
+        const int mcuColumn = x / 8;
+        const int pixelColumn = x % 8;
+        const int mcuIndex = mcuRow * this->mcuWidthReal + mcuColumn;
+        const int pixelIndex = pixelRow * 8 + pixelColumn;
+
+        outFile.put(mcus[mcuIndex].y[pixelIndex]);
+        outFile.put(mcus[mcuIndex].cr[pixelIndex]);
+        outFile.put(mcus[mcuIndex].cb[pixelIndex]);
+      }
+      for (int i = 0; i < paddingSize; ++i)
+      {
+        outFile.put(0);
+      }
+    }
+
+    outFile.close();
+    return true;
+  }
+
   void YCbCrToRGBMCU(MCU &mcu, const MCU &cbcr, const uint v, const uint h)
   {
     for (uint y = 7; y < 8; --y)
@@ -494,7 +541,7 @@ public:
   }
 
   // convert all pixels from YCbCr color space to RGB
-  void YCbCrToRGB(MCU *const mcus)
+  void YCbCrToRGB()
   {
     for (uint y = 0; y < this->mcuHeight; y += this->verticalSamplingFactor)
     {
@@ -505,7 +552,7 @@ public:
         {
           for (uint h = this->horizontalSamplingFactor - 1; h < this->horizontalSamplingFactor; --h)
           {
-            MCU &mcu = mcus[(y + v) * this->mcuWidthReal + (x + h)];
+            MCU &mcu = this->mcus[(y + v) * this->mcuWidthReal + (x + h)];
             YCbCrToRGBMCU(mcu, cbcr, v, h);
           }
         }
@@ -522,12 +569,8 @@ public:
   }
 
   // dequantize all MCUs
-  void dequantize(MCU *const mcus)
+  void dequantize()
   {
-    cout << "MCU Height : " << this->mcuHeight << " MCU Width : " << this->mcuWidth << endl;
-    cout << "MCU Width Real : " << this->mcuWidthReal << " MCU Height Real : " << this->mcuHeightReal << endl;
-    // cout << "Vertical Sampling Factor : " << this->verticalSamplingFactor << " Horizontal Sampling Factor : " << this->horizontalSamplingFactor << endl;
-
     for (uint y = 0; y < this->mcuHeight; y += this->verticalSamplingFactor)
     {
       for (uint x = 0; x < this->mcuWidth; x += this->horizontalSamplingFactor)
@@ -538,8 +581,7 @@ public:
           {
             for (uint h = 0; h < this->color_components[i].horizontal_sampling_factor; ++h)
             {
-              // cout << "CC " << this->color_components[i].quantizationTableID<< endl;
-              dequantizeMCUComponent(this->quantization_tables[this->color_components[i].quantizationTableID], mcus[(y + v) * this->mcuWidthReal + (x + h)][i]);
+              dequantizeMCUComponent(this->quantization_tables[this->color_components[i].quantizationTableID], this->mcus[(y + v) * this->mcuWidthReal + (x + h)][i]);
             }
           }
         }
@@ -690,7 +732,7 @@ public:
   }
 
   // perform IDCT on all MCUs
-  void inverseDCT(MCU *const mcus)
+  void inverseDCT()
   {
     for (uint y = 0; y < this->mcuHeight; y += this->verticalSamplingFactor)
     {
@@ -702,7 +744,7 @@ public:
           {
             for (uint h = 0; h < this->color_components[i].horizontal_sampling_factor; ++h)
             {
-              inverseDCTComponent(mcus[(y + v) * this->mcuWidthReal + (x + h)][i]);
+              inverseDCTComponent(this->mcus[(y + v) * this->mcuWidthReal + (x + h)][i]);
             }
           }
         }
@@ -710,93 +752,8 @@ public:
     }
   }
 
-  void decode()
+  void process_image_data()
   {
-    while (1)
-    {
-      unsigned char *marker = file->read(1);
-      if (marker[0] == 0xff)
-      {
-        Marker *marker = new Marker(file);
-        if (marker->type == MarkerType::SOI)
-        {
-          show << "Start of Image" >> cout;
-        }
-        else if (marker->type == MarkerType::APP)
-        {
-          read_application_headers(marker);
-        }
-        else if (marker->type == MarkerType::SOF)
-        {
-          read_sof(marker);
-        }
-        else if (marker->type == MarkerType::DHT)
-        {
-          read_huffman_table(marker);
-        }
-        else if (marker->type == MarkerType::DQT)
-        {
-          read_quantization_table(marker);
-        }
-        else if (marker->type == MarkerType::SOS)
-        {
-          read_sos(marker);
-          break;
-        }
-        else if (marker->type == MarkerType::DRI)
-        {
-          read_dri(marker);
-        }
-        else if (marker->type == MarkerType::DRM)
-        {
-          show(LogType::WARNING) << "Found DRM marker, ignoring ..." >> cout;
-          show[1] << "Length : " << marker->length >> cout;
-        }
-        else if (marker->type == MarkerType::META)
-        {
-          show(LogType::WARNING) << "Found Meta marker, ignoring ..." >> cout;
-          show[1] << "Length : " << marker->length >> cout;
-        }
-        else if (marker->type == MarkerType::EOI)
-        {
-          show << "End of file" >> cout;
-          return;
-        }
-        else if (marker->type == MarkerType::INVALID)
-        {
-          show(LogType::ERROR) << "Invalid marker (" << (int)*to_hex_string(marker->marker, 1) << ", " << hex_to_int(marker->marker, 1) << ")" >> cout;
-          return;
-        }
-        else if (marker->type == MarkerType::PAD)
-        {
-          continue;
-        }
-        else
-        {
-          show(LogType::ERROR) << "Invalid marker type. Not Implemented (" << (char *)to_hex_string(marker->marker, 1) << ")" >> cout;
-          return;
-        }
-        delete marker;
-      }
-      else
-      {
-        show(LogType::ERROR) << "Invalid marker, May be an unexpected format occured!(" << (char *)to_hex_string(marker, 1) << ")" >> cout;
-        return;
-      }
-      delete marker;
-    }
-
-    auto start = std::chrono::high_resolution_clock::now();
-
-    file->readImageData();
-
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> duration = end - start;
-    double time_taken = duration.count();
-
-    // Output the time taken
-    std::cout << "Time taken by function: " << time_taken << " seconds" << std::endl;
-
     for (int i = 0; i < this->numComponents; i++)
     {
       if (this->quantization_tables[this->color_components[i].quantizationTableID]->set == false)
@@ -825,116 +782,148 @@ public:
     show[1] << "Got Number of Components : " << this->numComponents >> cout;
     show[1] << "Got Huffman Data of size(" << (int)file->size << ")" >> cout;
 
-    start = std::chrono::high_resolution_clock::now();
-
-    MCU *mcus = decodeHuffman();
-    // // dequantize MCU coefficients
-    dequantize(mcus);
-
-    // // Inverse Discrete Cosine Transform
-    inverseDCT(mcus);
-
-    // // color conversion
-    YCbCrToRGB(mcus);
-    end = std::chrono::high_resolution_clock::now();
-    duration = end - start;
-    time_taken = duration.count();
-    std::cout << "Time taken by huffman decode function: " << time_taken << " seconds" << std::endl;
-
-    cout << mcus[0].y << endl;
-    string filename = "img.jpg";
-    const std::size_t pos = filename.find_last_of('.');
-    const std::string outFilename = (pos == std::string::npos) ? (filename + ".bmp") : (filename.substr(0, pos) + ".bmp");
-
-    start = std::chrono::high_resolution_clock::now();
-    writeBMP(this, mcus, outFilename);
-    displayImage(mcus, this->image_width, this->image_height, this->mcuWidth, this->mcuHeight, this->mcuWidthReal);
-    // Display display(mcus, this->image_width, this->image_height, this->mcuWidth, this->mcuHeight);
-
-    // display.display();
-    end = std::chrono::high_resolution_clock::now();
-    duration = end - start;
-    time_taken = duration.count();
-
-    // Output the time taken
-    std::cout << "Time taken by write bmp function: " << time_taken << " seconds" << std::endl;
-    cout << "HURAH!!!" << endl;
+    this->mcus = decodeHuffman();
+    dequantize();
+    inverseDCT();
+    YCbCrToRGB();
   }
-};
 
-// helper function to write a 4-byte integer in little-endian
-void putInt(std::ofstream &outFile, const int v)
-{
-  outFile.put((v >> 0) & 0xFF);
-  outFile.put((v >> 8) & 0xFF);
-  outFile.put((v >> 16) & 0xFF);
-  outFile.put((v >> 24) & 0xFF);
-}
+public:
+  int image_width;       // Image Width
+  int image_height;      // Image Height
+  int mcuWidthReal = 0;  // MCU Width Real
+  int mcuHeightReal = 0; // MCU Height Real
 
-// helper function to write a 2-byte short integer in little-endian
-void putShort(std::ofstream &outFile, const int v)
-{
-  outFile.put((v >> 0) & 0xFF);
-  outFile.put((v >> 8) & 0xFF);
-}
-
-// write all the pixels in the MCUs to a BMP file
-void writeBMP(const JPEG *const image, const MCU *const mcus, const std::string &filename)
-{
-  // open file
-  std::ofstream outFile = std::ofstream(filename, std::ios::out | std::ios::binary);
-  if (!outFile.is_open())
+  Image(string filename)
   {
-    std::cout << "Error - Error opening output file\n";
+    file = new BitStream(filename);
+    unsigned char *type = file->read(2);
+    if (type[0] != 0xff || type[1] != 0xd8)
+    {
+      show(LogType::WARNING) << "ERROR : Not a JPEG file" >> cout;
+      exit(1);
+    }
+
+  }
+
+  void saveToBMP(string filename)
+  {
+    if(writeBMP(filename)) {
+      show[0] << "Image Saved" >> cout;
+    } else {
+      show(LogType::ERROR) << "Image Save Failed" >> cout;
+    }
+  }
+
+  void display() {
+    if(displayImage(this->mcus, this->image_width, this->image_height, this->mcuWidth, this->mcuHeight, this->mcuWidthReal)) {
+      show[0] << "Image Displayed" >> cout;
+    } else {
+      show(LogType::ERROR) << "Image Display Failed" >> cout;
+    }
+  }
+
+  void readJPEG()
+  {
+    while (1)
+    {
+      if(file->eof()) {
+        show(LogType::WARNING) << "File Readed Completely!" >> cout;
+        break;
+      }
+      unsigned char *marker = file->read(1);
+      if (marker[0] == 0xff)
+      {
+        Marker *marker = new Marker(file);
+        if (marker->type == MarkerType::SOI)
+        {
+          show << "Start of Image" >> cout;
+        }
+        else if (marker->type == MarkerType::APP)
+        {
+          read_application_headers(marker);
+        }
+        else if (marker->type == MarkerType::SOF)
+        {
+          read_sof(marker);
+        }
+        else if (marker->type == MarkerType::DHT)
+        {
+          read_huffman_table(marker);
+        }
+        else if (marker->type == MarkerType::DQT)
+        {
+          read_quantization_table(marker);
+        }
+        else if (marker->type == MarkerType::SOS)
+        {
+          read_sos(marker);
+          process_image_data();
+          break;
+        }
+        else if (marker->type == MarkerType::DRI)
+        {
+          read_dri(marker);
+        }
+        else if (marker->type == MarkerType::DRM)
+        {
+          show(LogType::WARNING) << "Found DRM marker, ignoring ..." >> cout;
+          show[1] << "Length : " << marker->length >> cout;
+        }
+        else if (marker->type == MarkerType::META)
+        {
+          show(LogType::WARNING) << "Found Meta marker, ignoring ..." >> cout;
+          show[1] << "Length : " << marker->length >> cout;
+        }
+        else if (marker->type == MarkerType::EOI)
+        {
+          show << "End of file" >> cout;
+          return;
+        }
+        else if (marker->type == MarkerType::INVALID)
+        {
+          show(LogType::ERROR) << "Invalid marker (" << (int)marker->marker << ", " << marker->marker << ")" >> cout;
+          return;
+        }
+        else if (marker->type == MarkerType::PAD)
+        {
+          continue;
+        }
+        else
+        {
+          show(LogType::ERROR) << "Invalid marker type. Not Implemented (" << marker->marker << ")" >> cout;
+          return;
+        }
+        delete marker;
+      }
+      else
+      {
+        show(LogType::ERROR) << "Invalid marker, May be an unexpected format occured!(" << (char *)to_hex_string(marker, 1) << ")" >> cout;
+        return;
+      }
+      delete marker;
+    }
     return;
   }
 
-  const int paddingSize = image->image_width % 4;
-  const int size = 14 + 12 + image->image_height * image->image_width * 3 + paddingSize * image->image_height;
-
-  outFile.put('B');
-  outFile.put('M');
-  putInt(outFile, size);
-  putInt(outFile, 0);
-  putInt(outFile, 0x1A);
-  putInt(outFile, 12);
-  putShort(outFile, image->image_width);
-  putShort(outFile, image->image_height);
-  putShort(outFile, 1);
-  putShort(outFile, 24);
-
-  for (int y = image->image_height - 1; y >= 0; --y)
+  ~Image()
   {
-    const int mcuRow = y / 8;
-    const int pixelRow = y % 8;
-    for (int x = 0; x < image->image_width; ++x)
-    {
-      const int mcuColumn = x / 8;
-      const int pixelColumn = x % 8;
-      const int mcuIndex = mcuRow * image->mcuWidthReal + mcuColumn;
-      const int pixelIndex = pixelRow * 8 + pixelColumn;
-
-      outFile.put(mcus[mcuIndex].y[pixelIndex]);
-      outFile.put(mcus[mcuIndex].cr[pixelIndex]);
-      outFile.put(mcus[mcuIndex].cb[pixelIndex]);
-    }
-    for (int i = 0; i < paddingSize; ++i)
-    {
-      outFile.put(0);
-    }
+    show[0] << "Exiting ..." >> cout;
+    file->close();
   }
-
-  outFile.close();
-}
+};
 
 int main(int argc, char **argv)
 {
   if (argc < 2)
   {
-    show(LogType::ERROR) << "Usage: jpeg <filename>" >> cout;
+    show(LogType::ERROR) << "Usage : jpeg <filename>" >> cout;
     return 1;
   }
-  JPEG jpeg(argv[1]);
-  jpeg.decode();
+
+  Image *jpeg = new Image(argv[1]);
+  jpeg->readJPEG();
+  jpeg->display();
+  delete jpeg;
   return 0;
 }
